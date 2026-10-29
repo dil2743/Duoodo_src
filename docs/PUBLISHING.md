@@ -57,3 +57,16 @@ export RELEASE_KEY_ALIAS=duoodo
 export RELEASE_KEY_PASSWORD=$(cat ~/duoodo-signing/RELEASE_KEY_PASSWORD.txt)
 ./gradlew assembleRelease
 ```
+
+## Public releases from a private source repo
+
+Source: `dil2743/Duoodo_src` (private). App: `dil2743/Duoodo` (public, README + releases only).
+On every `v*.*.*` tag, `release.yml` creates the release in the source repo and the same release
+(APK, `.sha256`, notes) in the public repo.
+
+One-time setup:
+1. Push `docs/public-repo/README.md` as the first commit of `dil2743/Duoodo` (a release needs a commit).
+2. Create a fine-grained token: Repository access = only `dil2743/Duoodo`, Permissions = Contents: Read and write.
+3. Add it to `dil2743/Duoodo_src` as the secret `PUBLIC_REPO_TOKEN`.
+4. Make `dil2743/Duoodo_src` private. Build provenance attestation is skipped for private repos;
+   the public release still carries the SHA-256 and signing-certificate fingerprint.

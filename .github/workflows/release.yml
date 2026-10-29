@@ -92,3 +92,19 @@ jobs:
           gh release create "$GITHUB_REF_NAME" "$APK" "$APK.sha256" \
             --title "Duoodo $GITHUB_REF_NAME" \
             --notes-file notes.md
+
+      # The source repo can be private; the app is published from a separate public repo.
+      # PUBLIC_REPO_TOKEN: fine-grained token scoped to that repo only, Contents: read & write.
+      - name: Publish to public repo
+        env:
+          GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
+          PUBLIC_REPO: ${{ vars.PUBLIC_REPO || 'dil2743/Duoodo' }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning::PUBLIC_REPO_TOKEN not set; skipping public release."
+            exit 0
+          fi
+          gh release create "$GITHUB_REF_NAME" "$APK" "$APK.sha256" \
+            --repo "$PUBLIC_REPO" \
+            --title "Duoodo $GITHUB_REF_NAME" \
+            --notes-file notes.md
