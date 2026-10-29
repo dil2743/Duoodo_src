@@ -1,5 +1,7 @@
 package app.duoodo.widget
 
+import android.appwidget.AppWidgetManager
+import android.content.ComponentName
 import android.content.Context
 import androidx.compose.ui.unit.dp
 import androidx.glance.GlanceId
@@ -56,6 +58,15 @@ class DuoodoWidget : GlanceAppWidget() {
     }
 
     companion object {
+        fun canRequestPin(context: Context): Boolean =
+            AppWidgetManager.getInstance(context).isRequestPinAppWidgetSupported
+
+        /** Asks the launcher to place the widget; the user confirms in a system dialog. */
+        fun requestPin(context: Context) {
+            AppWidgetManager.getInstance(context)
+                .requestPinAppWidget(ComponentName(context, DuoodoWidgetReceiver::class.java), null, null)
+        }
+
         suspend fun refreshAll(context: Context) {
             val manager = GlanceAppWidgetManager(context)
             val widget = DuoodoWidget()

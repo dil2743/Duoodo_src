@@ -40,6 +40,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
+import app.duoodo.widget.DuoodoWidget
 import java.text.DateFormat
 import java.util.Date
 
@@ -144,6 +146,10 @@ private fun ReceivedTab(vm: MainViewModel) {
             )
         }
         OutlinedButton(onClick = vm::checkNow) { Text("Check now") }
+        val context = LocalContext.current
+        if (DuoodoWidget.canRequestPin(context)) {
+            TextButton(onClick = { DuoodoWidget.requestPin(context) }) { Text("Add widget to home screen") }
+        }
         Spacer(Modifier.weight(1f))
         vm.safetyEmojis?.let {
             Text(
