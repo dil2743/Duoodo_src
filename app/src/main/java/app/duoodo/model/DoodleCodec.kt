@@ -15,9 +15,10 @@ import kotlin.math.roundToInt
  *   per stroke: i32 argb | u16 width (fraction * 65535) | u16 pointCount | pointCount * (u16 x, u16 y)
  */
 object DoodleCodec {
+    // Limits keep the largest doodle (~36 KB) inside the top padding bucket of [app.duoodo.sync.Envelope].
     private const val VERSION = 1
-    const val MAX_STROKES = 2_000
-    const val MAX_TOTAL_POINTS = 60_000
+    const val MAX_STROKES = 500
+    const val MAX_TOTAL_POINTS = 8_000
     private const val Q = 65535f
 
     fun encode(doodle: Doodle): ByteArray {

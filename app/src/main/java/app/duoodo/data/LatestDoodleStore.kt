@@ -21,6 +21,10 @@ class LatestDoodleStore(context: Context) {
         null
     }
 
+    fun clear() {
+        file.delete()
+    }
+
     fun overwrite(doodle: Doodle) {
         val bytes = DoodleCodec.encode(doodle)
         val out = file.startWrite()

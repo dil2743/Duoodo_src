@@ -15,7 +15,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -28,6 +30,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -52,6 +55,11 @@ fun DuoodoScreen(vm: MainViewModel) {
     }
     Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
+            when (val state = vm.pairState) {
+                MainViewModel.PairState.Unpaired -> return@Column UnpairedScreen(vm)
+                is MainViewModel.PairState.Inviting -> return@Column InvitingScreen(vm, state.code)
+                MainViewModel.PairState.Paired -> Unit
+            }
             TabRow(selectedTabIndex = tab) {
                 Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Draw") })
                 Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Received") })
@@ -101,7 +109,7 @@ private fun DrawTab(vm: MainViewModel) {
             OutlinedButton(onClick = d::undo, enabled = d.canUndo) { Text("Undo") }
             OutlinedButton(onClick = d::clear, enabled = d.canUndo) { Text("Clear") }
             Spacer(Modifier.weight(1f))
-            Button(onClick = vm::send, enabled = d.canUndo) { Text("Send") }
+            Button(onClick = vm::send, enabled = d.canUndo && !vm.busy) { Text(if (vm.busy) "Sending…" else "Send") }
         }
     }
 }
@@ -135,5 +143,25 @@ private fun ReceivedTab(vm: MainViewModel) {
             )
         }
         OutlinedButton(onClick = vm::checkNow) { Text("Check now") }
+        Spacer(Modifier.weight(1f))
+        vm.safetyEmojis?.let {
+            Text(
+                "Safety code: ${it.joinToString(" ")}\nIf your partner sees the same emojis, your link is secure.",
+                style = MaterialTheme.typography.bodySmall,
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        var confirmUnpair by remember { mutableStateOf(false) }
+        TextButton(onClick = { confirmUnpair = true }) { Text("Unpair") }
+        if (confirmUnpair) {
+            AlertDialog(
+                onDismissRequest = { confirmUnpair = false },
+                title = { Text("Unpair?") },
+                text = { Text("You'll need a new invite to pair again. The received doodle is deleted.") },
+                confirmButton = { TextButton(onClick = { confirmUnpair = false; vm.unpair() }) { Text("Unpair") } },
+                dismissButton = { TextButton(onClick = { confirmUnpair = false }) { Text("Cancel") } },
+            )
+        }
     }
 }

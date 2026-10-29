@@ -18,7 +18,7 @@ class CheckWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
 
     override suspend fun doWork(): Result {
         try {
-            transport.fetchLatest()?.let { Inbox.deliver(applicationContext, it) }
+            Sync.check(applicationContext)
         } catch (e: Exception) {
             // A failed check (offline, relay down) just waits for the next one.
         }
@@ -30,7 +30,6 @@ class CheckWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
     companion object {
         const val INTERVAL_MINUTES = 10L
         private const val WORK_NAME = "duoodo-check"
-        var transport: DoodleTransport = LoopbackTransport
 
         /**
          * Ensures the check loop is running. Without [chain] an already-scheduled check is left

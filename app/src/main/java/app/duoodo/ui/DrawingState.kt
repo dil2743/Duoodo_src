@@ -18,6 +18,8 @@ class DrawingState {
 
     private var pending = FloatArrayBuilder()
     private var totalPoints = 0
+    private var lastX = 0f
+    private var lastY = 0f
 
     val canUndo: Boolean get() = strokes.isNotEmpty()
 
@@ -29,6 +31,9 @@ class DrawingState {
 
     fun move(x: Float, y: Float) {
         if (current == null) return
+        val dx = x - lastX
+        val dy = y - lastY
+        if (dx * dx + dy * dy < MIN_STEP * MIN_STEP) return
         add(x, y)
     }
 
@@ -52,6 +57,8 @@ class DrawingState {
 
     private fun add(x: Float, y: Float) {
         if (totalPoints >= DoodleCodec.MAX_TOTAL_POINTS) return
+        lastX = x
+        lastY = y
         pending.add(x.coerceIn(0f, 1f), y.coerceIn(0f, 1f))
         totalPoints++
         current = pending.toArray()
@@ -73,6 +80,8 @@ class DrawingState {
             0xFF1F1F1F.toInt(), 0xFFE53935.toInt(), 0xFFFB8C00.toInt(), 0xFFFDD835.toInt(),
             0xFF43A047.toInt(), 0xFF1E88E5.toInt(), 0xFF8E24AA.toInt(), 0xFFEC407A.toInt(),
         )
+        /** Minimum distance between recorded points, as a fraction of the canvas side. */
+        private const val MIN_STEP = 0.003f
         val WIDTHS = listOf(0.006f, 0.014f, 0.03f)
     }
 }
