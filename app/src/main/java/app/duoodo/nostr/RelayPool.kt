@@ -1,9 +1,10 @@
 package app.duoodo.nostr
 
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -21,10 +22,6 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import java.util.concurrent.TimeUnit
 
-/**
- * Talks to several public Nostr relays at once. Each operation opens short-lived connections,
- * so nothing stays connected in the background. Relays only ever see signed, encrypted events.
- */
 interface Relays {
     /** Publishes to every relay; returns how many accepted it. */
     suspend fun publish(event: NostrEvent): Int
@@ -33,50 +30,75 @@ interface Relays {
     suspend fun query(filter: JsonObject): List<NostrEvent>
 }
 
+/**
+ * Talks to several public Nostr relays at once using short-lived connections. Relays only ever
+ * see signed, encrypted events.
+ *
+ * Operations return as soon as [quorum] relays have answered, so one slow relay never holds up a
+ * send or a check; the remaining relays keep going in [background] and catch up on their own.
+ */
 class RelayPool(
     val relays: List<String> = DEFAULT_RELAYS,
     private val timeoutMillis: Long = 8_000,
     private val client: OkHttpClient = sharedClient,
+    private val quorum: Int = 2,
+    private val background: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) : Relays {
-    override suspend fun publish(event: NostrEvent): Int = coroutineScope {
+    override suspend fun publish(event: NostrEvent): Int {
         val message = JsonArray(listOf(JsonPrimitive("EVENT"), event.toJson())).toString()
-        relays.map { url ->
-            async {
-                session(url) { send, incoming ->
-                    send(message)
-                    for (msg in incoming) {
-                        if (msg.getOrNull(0)?.str() == "OK" && msg.getOrNull(1)?.str() == event.id) {
-                            return@session msg.getOrNull(2)?.jsonPrimitive?.booleanOrNull == true
-                        }
+        val results = fanOut { url ->
+            session(url) { send, incoming ->
+                send(message)
+                for (msg in incoming) {
+                    if (msg.getOrNull(0)?.str() == "OK" && msg.getOrNull(1)?.str() == event.id) {
+                        return@session msg.getOrNull(2)?.jsonPrimitive?.booleanOrNull == true
                     }
-                    false
-                } ?: false
-            }
-        }.awaitAll().count { it }
+                }
+                false
+            } ?: false
+        }
+        return results.count { it }
     }
 
-    override suspend fun query(filter: JsonObject): List<NostrEvent> = coroutineScope {
+    override suspend fun query(filter: JsonObject): List<NostrEvent> {
         val subId = "q" + System.nanoTime().toString(36)
         val req = JsonArray(listOf(JsonPrimitive("REQ"), JsonPrimitive(subId), filter)).toString()
         val close = JsonArray(listOf(JsonPrimitive("CLOSE"), JsonPrimitive(subId))).toString()
-        relays.map { url ->
-            async {
-                session(url) { send, incoming ->
-                    val found = mutableListOf<NostrEvent>()
-                    send(req)
-                    for (msg in incoming) {
-                        when (msg.getOrNull(0)?.str()) {
-                            "EVENT" -> if (msg.getOrNull(1)?.str() == subId) {
-                                (msg.getOrNull(2) as? JsonObject)?.let(NostrEvent::fromJson)?.let(found::add)
-                            }
-                            "EOSE", "CLOSED" -> if (msg.getOrNull(1)?.str() == subId) break
+        val results = fanOut { url ->
+            session(url) { send, incoming ->
+                val found = mutableListOf<NostrEvent>()
+                send(req)
+                for (msg in incoming) {
+                    when (msg.getOrNull(0)?.str()) {
+                        "EVENT" -> if (msg.getOrNull(1)?.str() == subId) {
+                            (msg.getOrNull(2) as? JsonObject)?.let(NostrEvent::fromJson)?.let(found::add)
                         }
+                        "EOSE", "CLOSED" -> if (msg.getOrNull(1)?.str() == subId) break
                     }
-                    send(close)
-                    found
-                }.orEmpty()
+                }
+                send(close)
+                found
             }
-        }.awaitAll().flatten().distinctBy { it.id }.filter { it.isValid() }
+        }
+        return results.filterNotNull().flatten().distinctBy { it.id }.filter { it.isValid() }
+    }
+
+    /**
+     * Runs [op] against every relay and returns once [quorum] of them have produced a useful
+     * result (non-null and not false/empty), or all have finished. Unfinished relays keep running
+     * in [background] so a publish still reaches them.
+     */
+    private suspend fun <T> fanOut(op: suspend (String) -> T): List<T> {
+        val done = Channel<T>(Channel.UNLIMITED)
+        relays.forEach { url -> background.launch { done.send(op(url)) } }
+        val results = mutableListOf<T>()
+        var useful = 0
+        while (results.size < relays.size && useful < quorum) {
+            val r = done.receive()
+            results += r
+            if (r != null && r != false && (r as? List<*>)?.isEmpty() != true) useful++
+        }
+        return results
     }
 
     /**
@@ -112,13 +134,17 @@ class RelayPool(
     private fun JsonElement.str(): String? = (this as? JsonPrimitive)?.takeIf { it.isString }?.content
 
     companion object {
-        /** Large, long-running public relays. Using several means no single relay can block delivery. */
+        /**
+         * Public relays that accept app-data events and answer in ~3 s (measured 2026-10-29;
+         * relay.damus.io rejects these events and relay.nostr.band timed out). Using several means
+         * no single relay can block or censor delivery.
+         */
         val DEFAULT_RELAYS = listOf(
-            "wss://relay.damus.io",
             "wss://nos.lol",
             "wss://relay.primal.net",
             "wss://nostr.mom",
-            "wss://relay.nostr.band",
+            "wss://offchain.pub",
+            "wss://relay.nostr.net",
         )
 
         private val sharedClient = OkHttpClient.Builder()

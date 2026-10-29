@@ -69,6 +69,25 @@ class PeerTool {
                 val d = NostrTransport(load(), pool, transportState).fetchLatest()
                 println("PEER FETCHED " + (d?.let { "${it.strokes.size} strokes, ${it.strokes.sumOf { s -> s.pointCount }} points, texts=${it.texts.map { t -> t.text }}" } ?: "nothing"))
             }
+            "bench" -> {
+                // Time publish + query against each relay on its own.
+                val key = app.duoodo.crypto.Schnorr.privateKeyFrom(app.duoodo.crypto.Crypto.randomBytes(32))
+                val content = java.util.Base64.getEncoder().encodeToString(app.duoodo.crypto.Crypto.randomBytes(1052))
+                val urls = System.getenv("DUOODO_RELAYS")?.split(",")?.filter { it.isNotBlank() } ?: RelayPool.DEFAULT_RELAYS
+                for (url in urls) {
+                    val one = RelayPool(listOf(url))
+                    val now = System.currentTimeMillis() / 1000
+                    val d = app.duoodo.crypto.Crypto.randomBytes(8).joinToString("") { "%02x".format(it) }
+                    val ev = app.duoodo.nostr.NostrEvent.sign(key, now, 30078,
+                        listOf(listOf("d", d), listOf("expiration", (now + 600).toString())), content)
+                    val t0 = System.currentTimeMillis()
+                    val ok = one.publish(ev)
+                    val t1 = System.currentTimeMillis()
+                    val found = one.query(RelayPool.filter(listOf(30078), dTags = listOf(d))).size
+                    val t2 = System.currentTimeMillis()
+                    println("PEER BENCH $url publish=${if (ok > 0) "OK" else "FAIL"} ${t1 - t0}ms query=$found ${t2 - t1}ms")
+                }
+            }
             else -> error("unknown DUOODO_PEER=$mode")
         }
     }

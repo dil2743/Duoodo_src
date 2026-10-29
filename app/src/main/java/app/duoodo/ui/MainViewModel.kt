@@ -12,6 +12,9 @@ import app.duoodo.model.Doodle
 import app.duoodo.pairing.Invite
 import app.duoodo.pairing.Handshake
 import app.duoodo.pairing.PendingInvite
+import app.duoodo.data.Settings
+import app.duoodo.sync.Inbox
+import app.duoodo.sync.LiveService
 import app.duoodo.sync.Sync
 import app.duoodo.widget.DuoodoWidget
 import kotlinx.coroutines.Dispatchers
@@ -45,8 +48,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private var inviteWatcher: Job? = null
 
+    var instantDelivery by mutableStateOf(Settings(app).instantDelivery)
+        private set
+
     init {
         refreshPairState()
+        // Redraw as soon as the live connection (or any check) stores a newer doodle.
+        viewModelScope.launch {
+            Inbox.updates.collect { received = withContext(Dispatchers.IO) { store.read() } }
+        }
+    }
+
+    fun changeInstantDelivery(enabled: Boolean) {
+        Settings(getApplication()).instantDelivery = enabled
+        instantDelivery = enabled
+        LiveService.sync(getApplication())
     }
 
     private fun refreshPairState() {
@@ -59,6 +75,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             else -> PairState.Unpaired
         }
         if (pairState is PairState.Inviting || pairState is PairState.Joining) watchHandshake() else inviteWatcher?.cancel()
+        LiveService.sync(getApplication())
     }
 
     // --- Pairing ---

@@ -1,6 +1,11 @@
 package app.duoodo.ui
 
+import android.Manifest
 import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.result.contract.ActivityResultContracts
+import app.duoodo.sync.LiveService
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -22,6 +27,13 @@ class MainActivity : ComponentActivity() {
         }
         enableEdgeToEdge()
         CheckWorker.schedule(applicationContext)
+        // The live service posts a (silent) notification, which needs permission on Android 13+.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            registerForActivityResult(ActivityResultContracts.RequestPermission()) { LiveService.sync(this) }
+                .launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
         setContent {
             MaterialTheme { DuoodoScreen(viewModel) }
         }
@@ -30,5 +42,6 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         viewModel.checkNow()
+        LiveService.sync(this)
     }
 }

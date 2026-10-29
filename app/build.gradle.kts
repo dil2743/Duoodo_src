@@ -34,7 +34,7 @@ android {
     testOptions {
         unitTests.all {
             // Live relay test is opt-in (DUOODO_LIVE=1); PeerTool is driven by DUOODO_PEER.
-            listOf("DUOODO_LIVE", "DUOODO_PEER", "DUOODO_CODE", "DUOODO_WAIT", "DUOODO_TEXT").forEach { k -> it.environment(k, System.getenv(k) ?: "") }
+            listOf("DUOODO_LIVE", "DUOODO_PEER", "DUOODO_CODE", "DUOODO_WAIT", "DUOODO_TEXT", "DUOODO_RELAYS").forEach { k -> it.environment(k, System.getenv(k) ?: "") }
             it.testLogging.showStandardStreams = true
             it.outputs.upToDateWhen { false }
             listOf("https.proxyHost", "https.proxyPort").forEach { k ->
@@ -51,6 +51,7 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
@@ -65,4 +66,5 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     testImplementation(libs.junit)
+    testImplementation(libs.okhttp.mockwebserver)
 }

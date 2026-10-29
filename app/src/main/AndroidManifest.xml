@@ -2,8 +2,16 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Sandbox: network is the ONLY capability. Relay traffic is end-to-end encrypted. -->
+    <!-- Sandbox: network is the ONLY data capability. Relay traffic is end-to-end encrypted. -->
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Instant delivery: a foreground service keeps the relay connection open. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Lets the app open the system "don't optimize battery" dialog; the user decides. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!-- Guard rails: strip anything a library might try to merge in. -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove" />
@@ -17,7 +25,6 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" tools:node="remove" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" tools:node="remove" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" tools:node="remove" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" tools:node="remove" />
 
     <application
         android:allowBackup="false"
@@ -53,7 +60,21 @@
                 android:resource="@xml/duoodo_widget_info" />
         </receiver>
 
-        <!-- WorkManager's foreground service is unused; drop it with its permission. -->
+        <service
+            android:name=".sync.LiveService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <receiver
+            android:name=".sync.LiveStarter"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- WorkManager's own foreground service is unused. -->
         <service
             android:name="androidx.work.impl.foreground.SystemForegroundService"
             tools:node="remove" />

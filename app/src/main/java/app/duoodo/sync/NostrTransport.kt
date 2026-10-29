@@ -9,6 +9,7 @@ import app.duoodo.nostr.NostrEvent
 import app.duoodo.nostr.Relays
 import app.duoodo.nostr.RelayPool
 import app.duoodo.pairing.Pairing
+import kotlinx.serialization.json.JsonObject
 import java.io.IOException
 
 /**
@@ -53,22 +54,35 @@ class NostrTransport(
     }
 
     /** Returns the newest doodle from the partner on any relay, or null if none can be read. */
-    suspend fun fetchLatest(): Doodle? {
-        val nowDay = clock() / 1000 / DAY_SECONDS
-        val dir = pairing.incoming
-        // One day of slack each way covers clock skew between the two phones.
-        val authors = (nowDay - LOOKBACK_DAYS..nowDay + 1).map { pairing.nostrPublicKey(dir, it).toHex() }
-        val events = relays.query(
-            RelayPool.filter(listOf(NostrEvent.KIND_APP_DATA), authors = authors, dTags = listOf(pairing.slotTag))
-        )
-        val key = pairing.messageKey(dir)
-        return events
-            .filter { it.pubkey in authors }
-            .mapNotNull { event ->
-                runCatching { DoodleCodec.decode(Envelope.open(key, event.content.fromBase64(), aad(dir))) }.getOrNull()
-            }
+    suspend fun fetchLatest(): Doodle? =
+        relays.query(incomingFilter())
+            .mapNotNull(::open)
             // The timestamp inside the ciphertext is authenticated; the relay's created_at is not.
             .maxByOrNull { it.createdAtMillis }
+
+    /** Relay filter matching the partner's doodle events (also used for live subscriptions). */
+    fun incomingFilter(): JsonObject =
+        RelayPool.filter(listOf(NostrEvent.KIND_APP_DATA), authors = incomingAuthors(), dTags = listOf(pairing.slotTag))
+
+    /** Decrypts a doodle event from the partner; null if it isn't one. */
+    fun open(event: NostrEvent): Doodle? {
+        if (event.kind != NostrEvent.KIND_APP_DATA || event.tag("d") != pairing.slotTag) return null
+        if (event.pubkey !in incomingAuthors()) return null
+        val dir = pairing.incoming
+        return runCatching {
+            DoodleCodec.decode(Envelope.open(pairing.messageKey(dir), event.content.fromBase64(), aad(dir)))
+        }.getOrNull()
+    }
+
+    @Volatile private var authorsCache: Pair<Long, List<String>>? = null
+
+    /** The partner's signing keys for the past week and tomorrow; slack covers clock skew. */
+    private fun incomingAuthors(): List<String> {
+        val nowDay = clock() / 1000 / DAY_SECONDS
+        authorsCache?.let { (day, authors) -> if (day == nowDay) return authors }
+        val authors = (nowDay - LOOKBACK_DAYS..nowDay + 1).map { pairing.nostrPublicKey(pairing.incoming, it).toHex() }
+        authorsCache = nowDay to authors
+        return authors
     }
 
     private suspend fun deleteSlot(day: Long, nowSec: Long) {

@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Switch
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -49,6 +50,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
+import android.annotation.SuppressLint
+import android.content.Intent
+import android.net.Uri
+import android.os.PowerManager
+import android.provider.Settings
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import app.duoodo.widget.DuoodoWidget
 import java.text.DateFormat
 import java.util.Date
@@ -160,6 +167,36 @@ private fun DrawTab(vm: MainViewModel) {
 }
 
 @Composable
+private fun DeliverySettings(vm: MainViewModel) {
+    val context = LocalContext.current
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.weight(1f)) {
+            Text("Instant delivery", style = MaterialTheme.typography.bodyLarge)
+            Text(
+                if (vm.instantDelivery) "Doodles arrive within seconds. Shows a silent notification."
+                else "Checks about every 10 minutes, or when you open the app.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Switch(checked = vm.instantDelivery, onCheckedChange = vm::changeInstantDelivery)
+    }
+    val power = context.getSystemService(PowerManager::class.java)
+    var exempt by remember { mutableStateOf(power.isIgnoringBatteryOptimizations(context.packageName)) }
+    LifecycleResumeEffect(Unit) {
+        exempt = power.isIgnoringBatteryOptimizations(context.packageName)
+        onPauseOrDispose { }
+    }
+    if (vm.instantDelivery && !exempt) {
+        TextButton(onClick = {
+            @SuppressLint("BatteryLife")
+            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}"))
+            runCatching { context.startActivity(intent) }
+        }) { Text("Allow running in background (recommended)") }
+    }
+}
+
+@Composable
 private fun TextEntryDialog(maxBytes: Int, onDone: (String) -> Unit, onDismiss: () -> Unit) {
     var text by remember { mutableStateOf("") }
     val focus = remember { FocusRequester() }
@@ -213,6 +250,7 @@ private fun ReceivedTab(vm: MainViewModel) {
         if (DuoodoWidget.canRequestPin(context)) {
             TextButton(onClick = { DuoodoWidget.requestPin(context) }) { Text("Add widget to home screen") }
         }
+        DeliverySettings(vm)
         Spacer(Modifier.weight(1f))
         vm.safetyEmojis?.let {
             Text(
