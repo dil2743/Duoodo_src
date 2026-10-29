@@ -1,0 +1,5 @@
+- Instant delivery: doodles arrive within seconds, even with the app closed
+- Pair by QR code or by copying a one-time code
+- Text tool, save a received doodle to Pictures/Duoodo, clear the received doodle
+- Your partner is told when you unpair
+- New icon

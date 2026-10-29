@@ -5,6 +5,23 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+// Permissions the merged manifest may contain; anything else fails the build.
+val allowedPermissions = setOf(
+    "android.permission.INTERNET",
+    "android.permission.ACCESS_NETWORK_STATE",
+    "android.permission.WAKE_LOCK",
+    "android.permission.RECEIVE_BOOT_COMPLETED",
+    "android.permission.FOREGROUND_SERVICE",
+    "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
+    "android.permission.POST_NOTIFICATIONS",
+    "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
+    // Added by AndroidX for internal broadcasts.
+    "app.duoodo.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
+)
+
+// Release signing from the environment; unsigned otherwise.
+val releaseKeystore: String? = System.getenv("RELEASE_KEYSTORE")
+
 android {
     namespace = "app.duoodo"
     compileSdk = 35
@@ -13,8 +30,18 @@ android {
         applicationId = "app.duoodo"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
+        // versionCode = major * 10000 + minor * 100 + patch; release tags must match versionName.
+        versionCode = 200
         versionName = "0.2.0"
+    }
+
+    signingConfigs {
+        if (releaseKeystore != null) create("release") {
+            storeFile = file(releaseKeystore)
+            storePassword = System.getenv("RELEASE_KEYSTORE_PASSWORD")
+            keyAlias = System.getenv("RELEASE_KEY_ALIAS")
+            keyPassword = System.getenv("RELEASE_KEY_PASSWORD")
+        }
     }
 
     buildTypes {
@@ -22,6 +49,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.findByName("release")
         }
     }
     compileOptions {
@@ -54,6 +82,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.activity.compose)
+    // Play services pulls in an old Fragment; ActivityResult APIs need >= 1.3.
+    implementation(libs.androidx.fragment)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
@@ -70,4 +100,25 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.okhttp.mockwebserver)
+}
+
+listOf("Debug", "Release").forEach { variant ->
+    val verify = tasks.register("verify${variant}Permissions") {
+        group = "verification"
+        description = "Checks the merged $variant manifest against allowedPermissions."
+        val manifest = layout.buildDirectory.file(
+            "intermediates/merged_manifests/${variant.lowercase()}/process${variant}Manifest/AndroidManifest.xml"
+        )
+        dependsOn("process${variant}Manifest")
+        inputs.file(manifest)
+        doLast {
+            val requested = Regex("""<uses-permission(?:-sdk-23)?\s[^>]*android:name="([^"]+)"""")
+                .findAll(manifest.get().asFile.readText()).map { it.groupValues[1] }.toSet()
+            val unexpected = requested - allowedPermissions
+            check(unexpected.isEmpty()) {
+                "Permissions not in allowedPermissions: $unexpected"
+            }
+        }
+    }
+    tasks.matching { it.name == "assemble$variant" }.configureEach { dependsOn(verify) }
 }
