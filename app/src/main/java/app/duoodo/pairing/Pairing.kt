@@ -5,10 +5,8 @@ import app.duoodo.crypto.Schnorr
 import app.duoodo.crypto.fromBase64Url
 import app.duoodo.crypto.toBase64Url
 import app.duoodo.crypto.toHex
-import java.io.ByteArrayOutputStream
-import java.io.DataInputStream
-import java.io.DataOutputStream
 import java.io.IOException
+import java.nio.ByteBuffer
 import java.security.GeneralSecurityException
 
 /**
@@ -38,6 +36,10 @@ class Pairing(val root: ByteArray, val isInitiator: Boolean) {
 
     /** The "d" tag of our replaceable relay event; looks random to relays. */
     val slotTag: String get() = Crypto.hkdf(root, EMPTY, "duoodo/v1/slot", 16).toHex()
+
+    /** The inviting phone confirms the pairing under this tag, encrypted with [confirmKey]. */
+    val confirmTag: String get() = Crypto.hkdf(root, EMPTY, "duoodo/v1/confirm/tag", 16).toHex()
+    val confirmKey: ByteArray get() = Crypto.hkdf(root, EMPTY, "duoodo/v1/confirm/key")
 
     /** Short code both partners compare to detect a man-in-the-middle during pairing. */
     val safetyEmojis: List<String>
@@ -71,15 +73,25 @@ class Pairing(val root: ByteArray, val isInitiator: Boolean) {
 
 /**
  * A one-time invite code, created by the initiator and shared by copy/paste over any messenger.
- * Holds the initiator's public key and a random secret that both authenticates and encrypts
- * the responder's reply.
+ * Holds a fresh X25519 public key and 256 random bits that both authenticate and encrypt the
+ * responder's reply, plus the creation time so a stale code is refused on both sides.
+ * It is only good for setting up the pairing; the pairing itself lasts until unpaired.
  */
-class Invite(val initiatorPublicKey: ByteArray, val secret: ByteArray) {
+class Invite(val initiatorPublicKey: ByteArray, val secret: ByteArray, val createdAtSeconds: Long) {
     init {
         require(initiatorPublicKey.size == 32 && secret.size == 32)
     }
 
-    fun toCode(): String = CODE_PREFIX + (byteArrayOf(VERSION) + initiatorPublicKey + secret).toBase64Url()
+    fun toCode(): String = CODE_PREFIX + bytes().toBase64Url()
+
+    fun isExpired(nowMillis: Long): Boolean {
+        val age = nowMillis / 1000 - createdAtSeconds
+        // Small negative ages are tolerated for clock skew between the phones.
+        return age > TTL_SECONDS || age < -CLOCK_SKEW_SECONDS
+    }
+
+    internal fun bytes(): ByteArray =
+        byteArrayOf(VERSION) + initiatorPublicKey + secret + ByteBuffer.allocate(8).putLong(createdAtSeconds).array()
 
     /** Relays look up the reply by this tag; derived from the secret so only the two phones know it. */
     val replyTag: String get() = Crypto.hkdf(secret, ByteArray(0), "duoodo/v1/invite/tag", 16).toHex()
@@ -87,7 +99,10 @@ class Invite(val initiatorPublicKey: ByteArray, val secret: ByteArray) {
 
     companion object {
         const val CODE_PREFIX = "duoodo-"
-        private const val VERSION: Byte = 1
+        private const val VERSION: Byte = 2
+        private const val SIZE = 1 + 32 + 32 + 8
+        const val TTL_SECONDS = 24 * 3600L
+        private const val CLOCK_SKEW_SECONDS = 3600L
         val REPLY_AAD = "duoodo/v1/invite/reply".toByteArray()
 
         /**
@@ -102,8 +117,12 @@ class Invite(val initiatorPublicKey: ByteArray, val secret: ByteArray) {
             } catch (e: IllegalArgumentException) {
                 throw IOException("not an invite", e)
             }
-            if (bytes.size != 65 || bytes[0] != VERSION) throw IOException("not an invite")
-            return Invite(bytes.copyOfRange(1, 33), bytes.copyOfRange(33, 65))
+            return fromBytes(bytes)
+        }
+
+        internal fun fromBytes(bytes: ByteArray): Invite {
+            if (bytes.size != SIZE || bytes[0] != VERSION) throw IOException("not an invite")
+            return Invite(bytes.copyOfRange(1, 33), bytes.copyOfRange(33, 65), ByteBuffer.wrap(bytes, 65, 8).long)
         }
     }
 }
@@ -118,23 +137,18 @@ class PendingInvite(val keyPair: Crypto.KeyPair, val invite: Invite) {
         return Pairing(Pairing.deriveRoot(shared, invite.secret, keyPair.publicKey, responderPub), isInitiator = true)
     }
 
-    fun serialize(): ByteArray = ByteArrayOutputStream().also { b ->
-        DataOutputStream(b).use { it.write(keyPair.privateKey); it.write(keyPair.publicKey); it.write(invite.secret) }
-    }.toByteArray()
+    fun serialize(): ByteArray = keyPair.privateKey + invite.bytes()
 
     companion object {
-        fun create(): PendingInvite {
+        fun create(nowMillis: Long = System.currentTimeMillis()): PendingInvite {
             val kp = Crypto.x25519KeyPair()
-            return PendingInvite(kp, Invite(kp.publicKey, Crypto.randomBytes(32)))
+            return PendingInvite(kp, Invite(kp.publicKey, Crypto.randomBytes(32), nowMillis / 1000))
         }
 
         fun deserialize(bytes: ByteArray): PendingInvite {
-            if (bytes.size != 96) throw IOException("bad pending invite")
-            val input = DataInputStream(bytes.inputStream())
-            val priv = ByteArray(32).also(input::readFully)
-            val pub = ByteArray(32).also(input::readFully)
-            val secret = ByteArray(32).also(input::readFully)
-            return PendingInvite(Crypto.KeyPair(priv, pub), Invite(pub, secret))
+            if (bytes.size <= 32) throw IOException("bad pending invite")
+            val invite = Invite.fromBytes(bytes.copyOfRange(32, bytes.size))
+            return PendingInvite(Crypto.KeyPair(bytes.copyOf(32), invite.initiatorPublicKey), invite)
         }
     }
 }
@@ -143,7 +157,9 @@ class PendingInvite(val keyPair: Crypto.KeyPair, val invite: Invite) {
 object InviteAcceptor {
     class Result(val pairing: Pairing, val sealedReply: ByteArray)
 
-    fun accept(invite: Invite): Result {
+    /** @throws InviteExpiredException if the invite is too old. */
+    fun accept(invite: Invite, nowMillis: Long = System.currentTimeMillis()): Result {
+        if (invite.isExpired(nowMillis)) throw InviteExpiredException()
         val kp = Crypto.x25519KeyPair()
         val shared = Crypto.x25519(kp.privateKey, invite.initiatorPublicKey)
         val root = Pairing.deriveRoot(shared, invite.secret, invite.initiatorPublicKey, kp.publicKey)
@@ -151,3 +167,5 @@ object InviteAcceptor {
         return Result(Pairing(root, isInitiator = false), reply)
     }
 }
+
+class InviteExpiredException : IOException("invite expired")

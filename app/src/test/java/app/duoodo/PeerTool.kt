@@ -4,11 +4,11 @@ import app.duoodo.model.Doodle
 import app.duoodo.model.Stroke
 import app.duoodo.nostr.RelayPool
 import app.duoodo.pairing.Invite
-import app.duoodo.pairing.InviteAcceptor
+import app.duoodo.pairing.Handshake
 import app.duoodo.pairing.Pairing
-import app.duoodo.pairing.PairingRelay
 import app.duoodo.pairing.PendingInvite
 import app.duoodo.sync.NostrTransport
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.Assume.assumeTrue
 import org.junit.Test
@@ -25,6 +25,7 @@ import kotlin.math.sin
  *   DUOODO_PEER=join DUOODO_CODE=duoodo-… gradle testDebugUnitTest --tests '*PeerTool*'
  *   DUOODO_PEER=send  …   # sends a heart doodle to the app
  *   DUOODO_PEER=fetch …   # prints the app's latest doodle
+ *   DUOODO_WAIT=n         # join: give up after n polls (5 s apart) instead of 36
  */
 class PeerTool {
     private val stateFile = File(System.getProperty("java.io.tmpdir"), "duoodo-peer.bin")
@@ -37,11 +38,23 @@ class PeerTool {
         assumeTrue(mode.isNotEmpty())
         when (mode) {
             "join" -> {
-                val invite = Invite.parse(System.getenv("DUOODO_CODE").orEmpty())
-                val result = InviteAcceptor.accept(invite)
-                PairingRelay(pool).publishReply(invite, result.sealedReply)
-                save(result.pairing)
-                println("PEER PAIRED ${result.pairing.safetyEmojis.joinToString(" ")}")
+                // Behaves exactly like the app: reply, then wait for the inviter's confirmation.
+                val phone = object : Handshake.State {
+                    override var pairing: Pairing? = null
+                    override var pendingInvite: PendingInvite? = null
+                    override var joining: Pairing? = null
+                    override var joiningSinceMillis: Long? = null
+                }
+                val handshake = Handshake(pool)
+                handshake.join(phone, Invite.parse(System.getenv("DUOODO_CODE").orEmpty()))
+                println("PEER JOINING")
+                val attempts = System.getenv("DUOODO_WAIT")?.toIntOrNull() ?: 36
+                repeat(attempts) {
+                    handshake.advance(phone)
+                    phone.pairing?.let { save(it); println("PEER PAIRED ${it.safetyEmojis.joinToString(" ")}"); return@runBlocking }
+                    delay(5_000)
+                }
+                error("inviter never confirmed")
             }
             "send" -> {
                 NostrTransport(load(), pool, transportState).send(heart())

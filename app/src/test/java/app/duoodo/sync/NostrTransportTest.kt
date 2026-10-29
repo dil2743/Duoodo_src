@@ -28,8 +28,8 @@ class NostrTransportTest {
     }
 
     private fun pair(): Pair<Pairing, Pairing> = runBlocking {
-        val pending = PendingInvite.create()
-        val accepted = InviteAcceptor.accept(pending.invite)
+        val pending = PendingInvite.create(now)
+        val accepted = InviteAcceptor.accept(pending.invite, now)
         PairingRelay(relays, clock).publishReply(pending.invite, accepted.sealedReply)
         val initiator = PairingRelay(relays, clock).findReply(pending)
         assertNotNull(initiator)

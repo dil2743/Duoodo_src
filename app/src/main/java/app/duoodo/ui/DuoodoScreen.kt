@@ -58,6 +58,7 @@ fun DuoodoScreen(vm: MainViewModel) {
             when (val state = vm.pairState) {
                 MainViewModel.PairState.Unpaired -> return@Column UnpairedScreen(vm)
                 is MainViewModel.PairState.Inviting -> return@Column InvitingScreen(vm, state.code)
+                MainViewModel.PairState.Joining -> return@Column JoiningScreen(vm)
                 MainViewModel.PairState.Paired -> Unit
             }
             TabRow(selectedTabIndex = tab) {

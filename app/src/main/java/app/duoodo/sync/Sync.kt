@@ -4,7 +4,7 @@ import android.content.Context
 import app.duoodo.data.PairingRepository
 import app.duoodo.model.Doodle
 import app.duoodo.nostr.RelayPool
-import app.duoodo.pairing.PairingRelay
+import app.duoodo.pairing.Handshake
 
 /** App-level sync operations shared by the UI and the background worker. */
 object Sync {
@@ -13,17 +13,13 @@ object Sync {
     private fun transport(repo: PairingRepository): NostrTransport? =
         repo.pairing?.let { NostrTransport(it, relays, repo.transportState) }
 
-    /** Fetches and stores the partner's newest doodle. Also completes a pending invite if the partner answered. */
+    /** Fetches and stores the partner's newest doodle, after advancing any pairing in progress. */
     suspend fun check(context: Context) {
-        val repo = PairingRepository(context)
-        repo.pendingInvite?.let { pending ->
-            PairingRelay(relays).findReply(pending)?.let {
-                repo.pairing = it
-                repo.pendingInvite = null
-            }
-        }
-        transport(repo)?.fetchLatest()?.let { Inbox.deliver(context, it) }
+        advancePairing(PairingRepository(context))
+        transport(PairingRepository(context))?.fetchLatest()?.let { Inbox.deliver(context, it) }
     }
+
+    suspend fun advancePairing(repo: PairingRepository) = Handshake(relays).advance(repo)
 
     suspend fun send(context: Context, doodle: Doodle) {
         val transport = transport(PairingRepository(context)) ?: throw IllegalStateException("not paired")

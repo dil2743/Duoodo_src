@@ -80,7 +80,8 @@ fun InvitingScreen(vm: MainViewModel, code: String) {
         Text("Your invite code", style = MaterialTheme.typography.headlineSmall)
         Text(
             "Copy it and send it to your partner over WhatsApp, Signal, or any messenger. " +
-                "It works once. Anyone who gets it first could pair with you, so only send it to them.",
+                "Once they join you stay paired until one of you unpairs. " +
+                "The code is valid for 24 hours and for one person only.",
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -98,6 +99,22 @@ fun InvitingScreen(vm: MainViewModel, code: String) {
             CircularProgressIndicator(Modifier.padding(4.dp), strokeWidth = 2.dp)
             Text("Waiting for your partner to join…")
         }
+        TextButton(onClick = vm::unpair) { Text("Cancel") }
+    }
+}
+
+@Composable
+fun JoiningScreen(vm: MainViewModel) {
+    PairingColumn {
+        Spacer(Modifier.height(48.dp))
+        CircularProgressIndicator()
+        Text("Joining…", style = MaterialTheme.typography.headlineSmall)
+        Text(
+            "Waiting for your partner's phone to confirm. Their app needs to be open on the invite screen " +
+                "(or it confirms within about 10 minutes in the background).",
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         TextButton(onClick = vm::unpair) { Text("Cancel") }
     }
 }

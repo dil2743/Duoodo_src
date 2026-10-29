@@ -10,8 +10,7 @@ import app.duoodo.data.LatestDoodleStore
 import app.duoodo.data.PairingRepository
 import app.duoodo.model.Doodle
 import app.duoodo.pairing.Invite
-import app.duoodo.pairing.InviteAcceptor
-import app.duoodo.pairing.PairingRelay
+import app.duoodo.pairing.Handshake
 import app.duoodo.pairing.PendingInvite
 import app.duoodo.sync.Sync
 import app.duoodo.widget.DuoodoWidget
@@ -30,6 +29,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     sealed interface PairState {
         data object Unpaired : PairState
         data class Inviting(val code: String) : PairState
+        data object Joining : PairState
         data object Paired : PairState
     }
 
@@ -55,9 +55,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         pairState = when {
             pairing != null -> PairState.Paired
             pending != null -> PairState.Inviting(pending.invite.toCode())
+            repo.joining != null -> PairState.Joining
             else -> PairState.Unpaired
         }
-        if (pairState is PairState.Inviting) watchForReply() else inviteWatcher?.cancel()
+        if (pairState is PairState.Inviting || pairState is PairState.Joining) watchHandshake() else inviteWatcher?.cancel()
     }
 
     // --- Pairing ---
@@ -67,17 +68,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         refreshPairState()
     }
 
-    /** While the invite is on screen, poll briefly so pairing feels immediate. */
-    private fun watchForReply() {
+    /** While a handshake is on screen, poll every few seconds so pairing feels immediate. */
+    private fun watchHandshake() {
         if (inviteWatcher?.isActive == true) return
         inviteWatcher = viewModelScope.launch {
             while (isActive) {
-                val pending = repo.pendingInvite ?: break
-                val pairing = withContext(Dispatchers.IO) { runCatching { PairingRelay(Sync.relays).findReply(pending) }.getOrNull() }
-                if (pairing != null) {
-                    repo.pairing = pairing
-                    repo.pendingInvite = null
-                    refreshPairState()
+                withContext(Dispatchers.IO) { runCatching { Sync.advancePairing(repo) } }
+                val before = pairState
+                refreshPairState()
+                if (pairState != before) {
+                    if (pairState is PairState.Unpaired) status = "The invite expired. Create a new one."
+                    if (pairState is PairState.Paired) checkNow()
                     break
                 }
                 delay(INVITE_POLL_MILLIS)
@@ -92,15 +93,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             status = "That isn't a Duoodo invite code."
             return
         }
+        if (invite.isExpired(System.currentTimeMillis())) {
+            status = "This invite has expired. Ask your partner for a new one."
+            return
+        }
         viewModelScope.launch {
             busy = true
             try {
-                val result = InviteAcceptor.accept(invite)
-                withContext(Dispatchers.IO) { PairingRelay(Sync.relays).publishReply(invite, result.sealedReply) }
-                repo.pendingInvite = null
-                repo.pairing = result.pairing
+                withContext(Dispatchers.IO) { Handshake(Sync.relays).join(repo, invite) }
                 refreshPairState()
-                checkNow()
             } catch (e: Exception) {
                 status = "Couldn't reach the relays. Check your connection and try again."
             } finally {

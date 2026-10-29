@@ -42,6 +42,7 @@ class PairingTest {
     fun replyEncryptedForAnotherInviteIsRejected() {
         val pending = PendingInvite.create()
         val stranger = InviteAcceptor.accept(PendingInvite.create().invite)
+        // Encrypted with a different invite's secret, so it doesn't open.
         assertThrows(GeneralSecurityException::class.java) { pending.complete(stranger.sealedReply) }
     }
 
