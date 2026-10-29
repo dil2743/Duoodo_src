@@ -1,71 +1,53 @@
 package app.duoodo.ui
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Switch
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.TextButton
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Draw
+import androidx.compose.material.icons.rounded.Inbox
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.platform.LocalContext
-import android.annotation.SuppressLint
-import android.content.Intent
-import android.net.Uri
-import android.os.PowerManager
-import android.provider.Settings
-import androidx.lifecycle.compose.LifecycleResumeEffect
-import app.duoodo.BuildConfig
-import app.duoodo.data.Exporter
-import app.duoodo.widget.DuoodoWidget
-import java.text.DateFormat
-import java.util.Date
+import app.duoodo.ui.components.BirdLogo
+
+private enum class Tab(val label: String) { DRAW("Draw"), INBOX("Inbox"), SETTINGS("Settings") }
 
 @Composable
 fun DuoodoScreen(vm: MainViewModel) {
-    var tab by rememberSaveable { mutableIntStateOf(0) }
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(vm.status) {
         vm.status?.let {
@@ -73,246 +55,103 @@ fun DuoodoScreen(vm: MainViewModel) {
             vm.dismissStatus()
         }
     }
+    // Pairing flow screens are full-screen; the tabbed app appears once paired.
+    AnimatedContent(
+        targetState = vm.pairState,
+        contentKey = { it::class },
+        transitionSpec = { fadeIn() togetherWith fadeOut() },
+        label = "pairState",
+    ) { state ->
+        when (state) {
+            MainViewModel.PairState.Unpaired -> PairingScaffold(snackbar) { UnpairedScreen(vm) }
+            is MainViewModel.PairState.Inviting -> PairingScaffold(snackbar) { InvitingScreen(vm, state.code) }
+            MainViewModel.PairState.Joining -> PairingScaffold(snackbar) { JoiningScreen(vm) }
+            MainViewModel.PairState.PartnerLeft -> PairingScaffold(snackbar) { PartnerLeftScreen(vm) }
+            MainViewModel.PairState.Paired -> PairedApp(vm, snackbar)
+        }
+    }
+}
+
+@Composable
+private fun PairingScaffold(snackbar: SnackbarHostState, content: @Composable () -> Unit) {
     Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
-            when (val state = vm.pairState) {
-                MainViewModel.PairState.Unpaired -> return@Column UnpairedScreen(vm)
-                is MainViewModel.PairState.Inviting -> return@Column InvitingScreen(vm, state.code)
-                MainViewModel.PairState.Joining -> return@Column JoiningScreen(vm)
-                MainViewModel.PairState.PartnerLeft -> return@Column PartnerLeftScreen(vm)
-                MainViewModel.PairState.Paired -> Unit
-            }
-            TabRow(selectedTabIndex = tab) {
-                Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Draw") })
-                Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Received") })
-            }
-            Box(Modifier.weight(1f)) {
-                when (tab) {
-                    0 -> DrawTab(vm)
-                    else -> ReceivedTab(vm)
-                }
-            }
-            Footer()
-        }
+        Box(Modifier.fillMaxSize().padding(padding)) { content() }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DrawTab(vm: MainViewModel) {
-    val d = vm.drawing
-    var textAt by remember { mutableStateOf<Pair<Float, Float>?>(null) }
-    textAt?.let { (x, y) ->
-        TextEntryDialog(
-            maxBytes = d.textBudget,
-            onDone = { text -> d.addText(text, x, y); textAt = null },
-            onDismiss = { textAt = null },
-        )
-    }
-    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-            DrawingState.Tool.entries.forEachIndexed { i, t ->
-                SegmentedButton(
-                    selected = d.tool == t,
-                    onClick = { d.tool = t },
-                    shape = SegmentedButtonDefaults.itemShape(i, DrawingState.Tool.entries.size),
-                ) { Text(if (t == DrawingState.Tool.PEN) "✏️ Pen" else "🔤 Text") }
-            }
-        }
-        DoodleCanvas(
-            d,
-            onTextTap = { x, y -> if (d.textBudget > 0) textAt = x to y },
-            modifier = Modifier.fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(16.dp)),
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            DrawingState.PALETTE.forEach { c ->
-                Box(
-                    Modifier.size(32.dp).clip(CircleShape).background(Color(c))
-                        .border(if (d.color == c) 3.dp else 0.dp, MaterialTheme.colorScheme.primary, CircleShape)
-                        .clickable { d.color = c }
-                )
-            }
-        }
-        if (d.tool == DrawingState.Tool.TEXT) {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                DrawingState.TEXT_SIZES.forEachIndexed { i, s ->
-                    val selected = d.textSize == s
-                    Box(
-                        Modifier.size(40.dp).clip(CircleShape)
-                            .border(if (selected) 2.dp else 1.dp,
-                                if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
-                                CircleShape)
-                            .clickable { d.textSize = s },
-                        contentAlignment = Alignment.Center,
-                    ) { Text("A", color = Color(d.color), fontSize = (12 + i * 6).sp, fontWeight = FontWeight.Bold) }
-                }
-                Text("Tap the canvas to place text", style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        } else Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            DrawingState.WIDTHS.forEachIndexed { i, w ->
-                val dot = (6 + i * 7).dp
-                Box(
-                    Modifier.size(40.dp).clip(CircleShape)
-                        .border(if (d.width == w) 2.dp else 1.dp,
-                            if (d.width == w) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
-                            CircleShape)
-                        .clickable { d.width = w },
-                    contentAlignment = Alignment.Center,
-                ) { Box(Modifier.size(dot).clip(CircleShape).background(Color(d.color))) }
-            }
-        }
-        Spacer(Modifier.weight(1f))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            OutlinedButton(onClick = d::undo, enabled = d.canUndo) { Text("Undo") }
-            OutlinedButton(onClick = d::clear, enabled = d.canUndo) { Text("Clear") }
-            Spacer(Modifier.weight(1f))
-            Button(onClick = vm::send, enabled = d.canUndo && !vm.busy) { Text(if (vm.busy) "Sending…" else "Send") }
-        }
-    }
-}
-
-private val CompactPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
-
-@Composable
-fun Footer() {
-    Text(
-        "Duoodo v${BuildConfig.VERSION_NAME} · by Dilshad",
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-        textAlign = TextAlign.Center,
-        modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
-    )
-}
-
-@Composable
-private fun DeliverySettings(vm: MainViewModel) {
-    val context = LocalContext.current
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.weight(1f)) {
-            Text("Instant delivery", style = MaterialTheme.typography.bodyLarge)
-            Text(
-                if (vm.instantDelivery) "Doodles arrive within seconds. Shows a silent notification."
-                else "Checks about every 10 minutes, or when you open the app.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Switch(checked = vm.instantDelivery, onCheckedChange = vm::changeInstantDelivery)
-    }
-    val power = context.getSystemService(PowerManager::class.java)
-    var exempt by remember { mutableStateOf(power.isIgnoringBatteryOptimizations(context.packageName)) }
-    LifecycleResumeEffect(Unit) {
-        exempt = power.isIgnoringBatteryOptimizations(context.packageName)
-        onPauseOrDispose { }
-    }
-    if (vm.instantDelivery && !exempt) {
-        TextButton(onClick = {
-            @SuppressLint("BatteryLife")
-            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}"))
-            runCatching { context.startActivity(intent) }
-        }) { Text("Allow running in background (recommended)") }
-    }
-}
-
-@Composable
-private fun TextEntryDialog(maxBytes: Int, onDone: (String) -> Unit, onDismiss: () -> Unit) {
-    var text by remember { mutableStateOf("") }
-    val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { focus.requestFocus() }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Add text") },
-        text = {
-            OutlinedTextField(
-                value = text,
-                onValueChange = { if (it.toByteArray().size <= maxBytes) text = it },
-                placeholder = { Text("Say something…") },
-                modifier = Modifier.focusRequester(focus),
+private fun PairedApp(vm: MainViewModel, snackbar: SnackbarHostState) {
+    var tab by rememberSaveable { mutableIntStateOf(Tab.DRAW.ordinal) }
+    LaunchedEffect(tab) { if (tab == Tab.INBOX.ordinal) vm.markSeen() }
+    // Jump to the inbox the first time the screen sees a brand-new doodle? No: never yank the user
+    // away from a half-finished drawing. The badge tells them instead.
+    Scaffold(
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        BirdLogo(size = 28.dp)
+                        Spacer(Modifier.width(10.dp))
+                        Text("Duoodo", style = MaterialTheme.typography.titleLarge)
+                    }
+                },
+                actions = { ConnectionDot(vm.instantDelivery) },
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
             )
         },
-        confirmButton = { TextButton(onClick = { onDone(text) }, enabled = text.isNotBlank()) { Text("Add") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
-}
-
-@Composable
-private fun ReceivedTab(vm: MainViewModel) {
-    val doodle = vm.received
-    Column(
-        Modifier.fillMaxSize().padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        if (doodle == null || doodle.isEmpty) {
-            Spacer(Modifier.height(48.dp))
-            Text(
-                "Nothing yet.\nYour partner's latest doodle will appear here and on your home-screen widget.",
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        } else {
-            DoodleView(
-                doodle.marks,
-                Modifier.fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(16.dp)),
-            )
-            Text(
-                "Sent " + DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(doodle.createdAtMillis)),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), modifier = Modifier.fillMaxWidth()) {
-            OutlinedButton(onClick = vm::checkNow, contentPadding = CompactPadding) { Text("🔄 Check") }
-            if (doodle != null && !doodle.isEmpty && Exporter.isSupported) {
-                OutlinedButton(onClick = vm::saveReceived, contentPadding = CompactPadding) { Text("💾 Save") }
-            }
-            if (doodle != null) {
-                var confirmClear by remember { mutableStateOf(false) }
-                OutlinedButton(onClick = { confirmClear = true }, contentPadding = CompactPadding) { Text("🗑 Clear") }
-                if (confirmClear) {
-                    AlertDialog(
-                        onDismissRequest = { confirmClear = false },
-                        title = { Text("Clear this doodle?") },
-                        text = { Text("It's removed from this phone and your widget. Your partner isn't affected.") },
-                        confirmButton = { TextButton(onClick = { confirmClear = false; vm.clearReceived() }) { Text("Clear") } },
-                        dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Cancel") } },
+        bottomBar = {
+            NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+                Tab.entries.forEach { t ->
+                    NavigationBarItem(
+                        selected = tab == t.ordinal,
+                        onClick = { tab = t.ordinal },
+                        icon = {
+                            val icon = when (t) {
+                                Tab.DRAW -> Icons.Rounded.Draw
+                                Tab.INBOX -> Icons.Rounded.Inbox
+                                Tab.SETTINGS -> Icons.Rounded.Settings
+                            }
+                            if (t == Tab.INBOX && vm.unseen) {
+                                BadgedBox(badge = { Badge() }) { Icon(icon, null) }
+                            } else {
+                                Icon(icon, null)
+                            }
+                        },
+                        label = { Text(t.label) },
                     )
                 }
             }
+        },
+        snackbarHost = { SnackbarHost(snackbar) },
+    ) { padding ->
+        Box(Modifier.fillMaxSize().padding(padding)) {
+            when (Tab.entries[tab]) {
+                Tab.DRAW -> DrawTab(vm)
+                Tab.INBOX -> InboxTab(vm)
+                Tab.SETTINGS -> SettingsTab(vm)
+            }
         }
-        val context = LocalContext.current
-        // Re-checked on every resume, so the button disappears once the widget is placed.
-        var widgetPlaced by remember { mutableStateOf(DuoodoWidget.isPlaced(context)) }
-        LifecycleResumeEffect(Unit) {
-            widgetPlaced = DuoodoWidget.isPlaced(context)
-            onPauseOrDispose { }
-        }
-        if (!widgetPlaced && DuoodoWidget.canRequestPin(context)) {
-            TextButton(onClick = { DuoodoWidget.requestPin(context) }) { Text("Add widget to home screen") }
-        }
-        DeliverySettings(vm)
-        Spacer(Modifier.weight(1f))
-        vm.safetyEmojis?.let {
+    }
+}
+
+/** Small status pill: green when instant delivery keeps us connected. */
+@Composable
+private fun ConnectionDot(live: Boolean) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = CircleShape,
+        modifier = Modifier.padding(end = 12.dp),
+    ) {
+        Row(Modifier.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(color = if (live) Color(0xFF34C759) else MaterialTheme.colorScheme.outline, shape = CircleShape) {
+                Spacer(Modifier.size(8.dp))
+            }
+            Spacer(Modifier.width(6.dp))
             Text(
-                "Safety code: ${it.joinToString(" ")}\nIf your partner sees the same emojis, your link is secure.",
-                style = MaterialTheme.typography.bodySmall,
-                textAlign = TextAlign.Center,
+                if (live) "Live" else "Paired",
+                style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        var confirmUnpair by remember { mutableStateOf(false) }
-        TextButton(onClick = { confirmUnpair = true }) { Text("Unpair") }
-        if (confirmUnpair) {
-            AlertDialog(
-                onDismissRequest = { confirmUnpair = false },
-                title = { Text("Unpair?") },
-                text = { Text("You'll need a new invite to pair again. The received doodle is deleted.") },
-                confirmButton = { TextButton(onClick = { confirmUnpair = false; vm.unpair() }) { Text("Unpair") } },
-                dismissButton = { TextButton(onClick = { confirmUnpair = false }) { Text("Cancel") } },
             )
         }
     }

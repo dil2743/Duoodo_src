@@ -7,27 +7,26 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import app.duoodo.model.Mark
-import app.duoodo.model.Stroke
 import app.duoodo.render.DoodleRenderer
+import app.duoodo.ui.theme.Paper
 
 /**
- * Editable canvas. With the pen tool, drags draw strokes; with the text tool, a tap reports the
- * normalized position through [onTextTap] so the caller can ask for the text.
+ * Editable canvas. Drawing tools take drags; text and emoji tools report a tap position through
+ * [onTap] (normalized 0..1) so the caller can place them.
  */
 @Composable
-fun DoodleCanvas(state: DrawingState, onTextTap: (x: Float, y: Float) -> Unit, modifier: Modifier = Modifier) {
+fun DoodleCanvas(state: DrawingState, onTap: (x: Float, y: Float) -> Unit, modifier: Modifier = Modifier) {
     Canvas(
         modifier
             .aspectRatio(1f)
             .pointerInput(state, state.tool) {
-                if (state.tool == DrawingState.Tool.TEXT) {
-                    detectTapGestures { onTextTap(it.x / size.width, it.y / size.height) }
+                if (!state.tool.usesWidth) {
+                    detectTapGestures { onTap(it.x / size.width, it.y / size.height) }
                     return@pointerInput
                 }
                 awaitEachGesture {
@@ -38,6 +37,11 @@ fun DoodleCanvas(state: DrawingState, onTextTap: (x: Float, y: Float) -> Unit, m
                     down.consume()
                     while (true) {
                         val event = awaitPointerEvent()
+                        // A second finger means the user isn't drawing (e.g. resting a palm): drop the stroke.
+                        if (event.changes.size > 1) {
+                            state.cancel()
+                            break
+                        }
                         val change = event.changes.firstOrNull { it.id == down.id } ?: break
                         if (!change.pressed) break
                         state.move(change.position.x / w, change.position.y / h)
@@ -47,8 +51,7 @@ fun DoodleCanvas(state: DrawingState, onTextTap: (x: Float, y: Float) -> Unit, m
                 }
             }
     ) {
-        val inProgress = state.current?.let { Stroke(it, state.color, state.width) }
-        drawDoodle(if (inProgress == null) state.marks else state.marks + inProgress)
+        drawDoodle(state.marks + state.preview)
     }
 }
 
@@ -59,6 +62,6 @@ fun DoodleView(marks: List<Mark>, modifier: Modifier = Modifier) {
 }
 
 private fun DrawScope.drawDoodle(marks: List<Mark>) {
-    drawRect(Color.White)
+    drawRect(Paper)
     drawIntoCanvas { DoodleRenderer.drawMarks(it.nativeCanvas, marks, size.minDimension) }
 }

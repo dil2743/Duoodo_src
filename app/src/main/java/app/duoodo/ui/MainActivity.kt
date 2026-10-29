@@ -12,7 +12,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
-import androidx.compose.material3.MaterialTheme
+import app.duoodo.ui.theme.DuoodoTheme
 import app.duoodo.sync.CheckWorker
 
 class MainActivity : ComponentActivity() {
@@ -35,7 +35,7 @@ class MainActivity : ComponentActivity() {
                 .launch(Manifest.permission.POST_NOTIFICATIONS)
         }
         setContent {
-            MaterialTheme { DuoodoScreen(viewModel) }
+            DuoodoTheme { DuoodoScreen(viewModel) }
         }
     }
 

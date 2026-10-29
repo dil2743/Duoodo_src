@@ -46,6 +46,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var busy by mutableStateOf(false)
         private set
+    /** True while a manual check (pull to refresh) is running. */
+    var refreshing by mutableStateOf(false)
+        private set
+    /** A doodle arrived that the user hasn't looked at yet (drives the Inbox badge). */
+    var unseen by mutableStateOf(false)
+        private set
     var status by mutableStateOf<String?>(null)
         private set
 
@@ -58,11 +64,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         refreshPairState()
         // Redraw as soon as the live connection (or any check) stores a newer doodle.
         viewModelScope.launch {
-            Inbox.updates.collect {
+            Inbox.updates.collect { version ->
+                val before = received?.createdAtMillis
                 received = withContext(Dispatchers.IO) { store.read() }
+                if (version > 0 && received != null && received?.createdAtMillis != before) unseen = true
                 if (repo.partnerLeft && pairState != PairState.PartnerLeft) refreshPairState()
             }
         }
+    }
+
+    var widgetStyle by mutableStateOf(Settings(app).widgetStyle)
+        private set
+
+    fun changeWidgetStyle(style: Settings.WidgetStyle) {
+        Settings(getApplication()).widgetStyle = style
+        widgetStyle = style
+        viewModelScope.launch { DuoodoWidget.refreshAll(getApplication()) }
     }
 
     fun changeInstantDelivery(enabled: Boolean) {
@@ -196,6 +213,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             withContext(Dispatchers.IO) { Inbox.clearReceived(getApplication()) }
             received = null
+        }
+    }
+
+    fun markSeen() {
+        unseen = false
+    }
+
+    fun refresh() {
+        if (refreshing) return
+        viewModelScope.launch {
+            refreshing = true
+            withContext(Dispatchers.IO) { runCatching { Sync.check(getApplication()) } }
+            received = withContext(Dispatchers.IO) { store.read() }
+            refreshing = false
         }
     }
 

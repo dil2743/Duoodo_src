@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.paparazzi)
 }
 
 // Permissions the merged manifest may contain; anything else fails the build.
@@ -31,8 +32,8 @@ android {
         minSdk = 26
         targetSdk = 35
         // versionCode = major * 10000 + minor * 100 + patch; release tags must match versionName.
-        versionCode = 200
-        versionName = "0.2.0"
+        versionCode = 300
+        versionName = "0.3.0"
     }
 
     signingConfigs {
@@ -65,6 +66,11 @@ android {
             listOf("DUOODO_LIVE", "DUOODO_PEER", "DUOODO_CODE", "DUOODO_WAIT", "DUOODO_TEXT", "DUOODO_RELAYS").forEach { k -> it.environment(k, System.getenv(k) ?: "") }
             it.testLogging.showStandardStreams = true
             it.outputs.upToDateWhen { false }
+            // Screenshot tests compare pixels, which drift with fonts/JDK on other machines; they
+            // only run via recordPaparazziDebug / verifyPaparazziDebug, never in the normal test gate.
+            if (gradle.startParameter.taskNames.none { t -> t.contains("Paparazzi") }) {
+                it.exclude("**/ScreenshotTest*")
+            }
             listOf("https.proxyHost", "https.proxyPort").forEach { k ->
                 System.getProperty(k)?.let { v -> it.systemProperty(k, v) }
             }
@@ -89,6 +95,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.material.icons)
     implementation(libs.androidx.glance.appwidget)
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.bouncycastle)

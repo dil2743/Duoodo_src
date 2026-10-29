@@ -1,0 +1,5 @@
+- Fresh new look with light and dark themes that follow your phone
+- New drawing tools: marker, rainbow, eraser, arrows, lines, boxes, circles and emoji stamps
+- Undo and redo, smoother hand-drawn lines
+- Widget styles: Solid, Frosted (see-through) and Clear (ink on your wallpaper)
+- New Inbox and Settings tabs, pull down to check for a new doodle

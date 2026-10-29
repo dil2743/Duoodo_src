@@ -32,6 +32,31 @@ object DoodleRenderer {
         return bitmap
     }
 
+    /**
+     * Renders the doodle on a transparent background for drawing straight onto the wallpaper.
+     * Each mark gets a soft dark halo so it reads on light and dark wallpapers alike, and
+     * white "eraser" strokes are dropped since there's no paper to rub out.
+     */
+    fun toTransparentBitmap(doodle: Doodle, sizePx: Int): Bitmap {
+        val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val marks = doodle.marks.filterNot { it is Stroke && it.color == Color.WHITE }
+        val side = sizePx.toFloat()
+        // Halo pass: the same marks, blurred and darkened, underneath.
+        val halo = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+        drawMarks(Canvas(halo), marks, side)
+        val alpha = halo.extractAlpha()
+        val shadow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0x59000000
+            maskFilter = android.graphics.BlurMaskFilter(side * 0.006f, android.graphics.BlurMaskFilter.Blur.NORMAL)
+        }
+        canvas.drawBitmap(alpha, 0f, side * 0.003f, shadow)
+        alpha.recycle()
+        halo.recycle()
+        drawMarks(canvas, marks, side)
+        return bitmap
+    }
+
     /** Draws [marks] in order onto a square region of side [side] at the canvas origin. */
     fun drawMarks(canvas: Canvas, marks: List<Mark>, side: Float) {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -57,15 +82,30 @@ object DoodleRenderer {
             paint.style = Paint.Style.STROKE
             return
         }
-        val path = Path().apply {
-            moveTo(p[0] * size, p[1] * size)
-            var i = 2
-            while (i < p.size) {
-                lineTo(p[i] * size, p[i + 1] * size)
-                i += 2
-            }
+        canvas.drawPath(smoothPath(p, size), paint)
+    }
+
+    /**
+     * Smooths a polyline into quadratic curves through the midpoints of each segment, so freehand
+     * strokes look drawn rather than jagged. Short polylines (shapes: lines, boxes) stay straight.
+     */
+    private fun smoothPath(p: FloatArray, size: Float): Path {
+        val path = Path()
+        path.moveTo(p[0] * size, p[1] * size)
+        val n = p.size / 2
+        if (n <= 5) {
+            for (i in 1 until n) path.lineTo(p[2 * i] * size, p[2 * i + 1] * size)
+            return path
         }
-        canvas.drawPath(path, paint)
+        for (i in 1 until n - 1) {
+            val x = p[2 * i] * size
+            val y = p[2 * i + 1] * size
+            val mx = (x + p[2 * i + 2] * size) / 2
+            val my = (y + p[2 * i + 3] * size) / 2
+            path.quadTo(x, y, mx, my)
+        }
+        path.lineTo(p[2 * n - 2] * size, p[2 * n - 1] * size)
+        return path
     }
 
     /** Centers the text on its anchor, wrapping long lines and nudging the block to stay on the canvas. */

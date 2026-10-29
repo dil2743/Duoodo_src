@@ -27,7 +27,15 @@ import androidx.glance.layout.Alignment
 import androidx.glance.layout.Box
 import androidx.glance.layout.fillMaxSize
 import androidx.glance.text.Text
+import androidx.glance.text.TextStyle
+import androidx.glance.text.FontWeight
 import androidx.glance.unit.ColorProvider
+import androidx.glance.color.ColorProvider
+import androidx.glance.layout.Column
+import androidx.glance.layout.padding
+import androidx.glance.layout.size
+import app.duoodo.R
+import app.duoodo.data.Settings
 import androidx.compose.ui.graphics.Color
 import app.duoodo.data.LatestDoodleStore
 import app.duoodo.render.DoodleRenderer
@@ -41,26 +49,57 @@ class DuoodoWidget : GlanceAppWidget() {
         val store = LatestDoodleStore(context)
         val density = context.resources.displayMetrics.density
         provideContent {
-            // Glance keeps this session alive between updates, so read the doodle inside the
-            // composition, keyed on a version that refreshAll() bumps. Reading it once above
-            // would keep showing the doodle that was current when the session started.
+            // Glance keeps this session alive between updates, so read the doodle and style inside
+            // the composition, keyed on a version that refreshAll() bumps. Reading them once above
+            // would keep showing whatever was current when the session started.
             val version = currentState(VERSION) ?: 0L
-            val doodle = remember(version) { store.read() }
+            val style = remember(version) { Settings(context).widgetStyle }
+            val doodle = remember(version) { store.read()?.takeIf { !it.isEmpty } }
             val size = LocalSize.current
-            val sidePx = (minOf(size.width.value, size.height.value) * density).toInt().coerceIn(64, 800)
-            val bitmap = remember(version, sidePx) { doodle?.takeIf { !it.isEmpty }?.let { DoodleRenderer.toBitmap(it, sidePx) } }
+            val side = minOf(size.width, size.height)
+            val inset = if (style == Settings.WidgetStyle.FROSTED) 10.dp else 0.dp
+            val sidePx = ((side - inset * 2).value * density).toInt().coerceIn(64, 800)
+            val bitmap = remember(version, sidePx, style) {
+                doodle?.let {
+                    if (style == Settings.WidgetStyle.CLEAR) DoodleRenderer.toTransparentBitmap(it, sidePx)
+                    else DoodleRenderer.toBitmap(it, sidePx)
+                }
+            }
+            val card = when (style) {
+                Settings.WidgetStyle.SOLID -> ColorProvider(day = Color.White, night = Color.White)
+                // Translucent card that follows the system theme; the wallpaper shows through.
+                Settings.WidgetStyle.FROSTED -> ColorProvider(day = Color(0x8CFFFFFF), night = Color(0x8C1B1B23))
+                Settings.WidgetStyle.CLEAR -> ColorProvider(Color.Transparent)
+            }
             Box(
                 GlanceModifier
                     .fillMaxSize()
-                    .background(Color.White)
-                    .cornerRadius(16.dp)
+                    .background(card)
+                    .cornerRadius(24.dp)
+                    .padding(inset)
                     .clickable(actionStartActivity<MainActivity>()),
                 contentAlignment = Alignment.Center,
             ) {
                 if (bitmap == null) {
-                    Text("No doodle yet ✏️", style = androidx.glance.text.TextStyle(color = ColorProvider(Color.Gray)))
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Image(ImageProvider(R.drawable.ic_widget_bird), null, GlanceModifier.size(36.dp))
+                        Text(
+                            "No doodle yet",
+                            style = TextStyle(
+                                color = when (style) {
+                                    Settings.WidgetStyle.SOLID -> ColorProvider(Color(0xFF5E5D6E))
+                                    else -> ColorProvider(day = Color(0xFF1B1B23), night = Color(0xFFE5E3EE))
+                                },
+                                fontWeight = FontWeight.Medium,
+                            ),
+                        )
+                    }
                 } else {
-                    Image(provider = ImageProvider(bitmap), contentDescription = "Latest doodle from your partner")
+                    Image(
+                        provider = ImageProvider(bitmap),
+                        contentDescription = "Latest doodle from your partner",
+                        modifier = if (style == Settings.WidgetStyle.FROSTED) GlanceModifier.cornerRadius(16.dp) else GlanceModifier,
+                    )
                 }
             }
         }
