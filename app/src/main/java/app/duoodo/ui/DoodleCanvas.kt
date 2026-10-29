@@ -3,25 +3,33 @@ package app.duoodo.ui
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.Stroke as DrawStroke
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.input.pointer.pointerInput
+import app.duoodo.model.Mark
 import app.duoodo.model.Stroke
+import app.duoodo.render.DoodleRenderer
 
+/**
+ * Editable canvas. With the pen tool, drags draw strokes; with the text tool, a tap reports the
+ * normalized position through [onTextTap] so the caller can ask for the text.
+ */
 @Composable
-fun DoodleCanvas(state: DrawingState, modifier: Modifier = Modifier) {
+fun DoodleCanvas(state: DrawingState, onTextTap: (x: Float, y: Float) -> Unit, modifier: Modifier = Modifier) {
     Canvas(
         modifier
             .aspectRatio(1f)
-            .pointerInput(state) {
+            .pointerInput(state, state.tool) {
+                if (state.tool == DrawingState.Tool.TEXT) {
+                    detectTapGestures { onTextTap(it.x / size.width, it.y / size.height) }
+                    return@pointerInput
+                }
                 awaitEachGesture {
                     val down = awaitFirstDown()
                     val w = size.width.toFloat()
@@ -39,36 +47,18 @@ fun DoodleCanvas(state: DrawingState, modifier: Modifier = Modifier) {
                 }
             }
     ) {
-        drawRect(Color.White)
-        state.strokes.forEach { drawDoodleStroke(it.points, it.color, it.width) }
-        state.current?.let { drawDoodleStroke(it, state.color, state.width) }
+        val inProgress = state.current?.let { Stroke(it, state.color, state.width) }
+        drawDoodle(if (inProgress == null) state.marks else state.marks + inProgress)
     }
 }
 
-/** Read-only rendering of a doodle's strokes. */
+/** Read-only rendering of a doodle. */
 @Composable
-fun DoodleView(strokes: List<Stroke>, modifier: Modifier = Modifier) {
-    Canvas(modifier.aspectRatio(1f)) {
-        drawRect(Color.White)
-        strokes.forEach { drawDoodleStroke(it.points, it.color, it.width) }
-    }
+fun DoodleView(marks: List<Mark>, modifier: Modifier = Modifier) {
+    Canvas(modifier.aspectRatio(1f)) { drawDoodle(marks) }
 }
 
-private fun DrawScope.drawDoodleStroke(points: FloatArray, color: Int, width: Float) {
-    if (points.size < 2) return
-    val side = size.minDimension
-    val c = Color(color)
-    if (points.size == 2) {
-        drawCircle(c, radius = width * side / 2, center = Offset(points[0] * side, points[1] * side))
-        return
-    }
-    val path = Path().apply {
-        moveTo(points[0] * side, points[1] * side)
-        var i = 2
-        while (i < points.size) {
-            lineTo(points[i] * side, points[i + 1] * side)
-            i += 2
-        }
-    }
-    drawPath(path, c, style = DrawStroke(width * side, cap = StrokeCap.Round, join = StrokeJoin.Round))
+private fun DrawScope.drawDoodle(marks: List<Mark>) {
+    drawRect(Color.White)
+    drawIntoCanvas { DoodleRenderer.drawMarks(it.nativeCanvas, marks, size.minDimension) }
 }

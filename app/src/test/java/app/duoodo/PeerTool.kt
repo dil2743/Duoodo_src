@@ -2,6 +2,7 @@ package app.duoodo
 
 import app.duoodo.model.Doodle
 import app.duoodo.model.Stroke
+import app.duoodo.model.TextMark
 import app.duoodo.nostr.RelayPool
 import app.duoodo.pairing.Invite
 import app.duoodo.pairing.Handshake
@@ -23,7 +24,7 @@ import kotlin.math.sin
  * real public relays. Not a test; it only runs when DUOODO_PEER is set:
  *
  *   DUOODO_PEER=join DUOODO_CODE=duoodo-… gradle testDebugUnitTest --tests '*PeerTool*'
- *   DUOODO_PEER=send  …   # sends a heart doodle to the app
+ *   DUOODO_PEER=send  …   # sends a heart doodle to the app (DUOODO_TEXT=… adds a caption)
  *   DUOODO_PEER=fetch …   # prints the app's latest doodle
  *   DUOODO_WAIT=n         # join: give up after n polls (5 s apart) instead of 36
  */
@@ -57,12 +58,16 @@ class PeerTool {
                 error("inviter never confirmed")
             }
             "send" -> {
-                NostrTransport(load(), pool, transportState).send(heart())
-                println("PEER SENT heart")
+                val text = System.getenv("DUOODO_TEXT")
+                val doodle = if (text.isNullOrEmpty()) heart() else heart().let {
+                    Doodle(it.marks + TextMark(text, 0.5f, 0.85f, 0xFF1E88E5.toInt(), 0.08f), it.createdAtMillis)
+                }
+                NostrTransport(load(), pool, transportState).send(doodle)
+                println("PEER SENT heart" + if (text.isNullOrEmpty()) "" else " with text")
             }
             "fetch" -> {
                 val d = NostrTransport(load(), pool, transportState).fetchLatest()
-                println("PEER FETCHED " + (d?.let { "${it.strokes.size} strokes, ${it.strokes.sumOf { s -> s.pointCount }} points" } ?: "nothing"))
+                println("PEER FETCHED " + (d?.let { "${it.strokes.size} strokes, ${it.strokes.sumOf { s -> s.pointCount }} points, texts=${it.texts.map { t -> t.text }}" } ?: "nothing"))
             }
             else -> error("unknown DUOODO_PEER=$mode")
         }

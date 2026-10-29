@@ -17,6 +17,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -39,7 +43,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import app.duoodo.widget.DuoodoWidget
 import java.text.DateFormat
@@ -78,10 +86,28 @@ fun DuoodoScreen(vm: MainViewModel) {
 @Composable
 private fun DrawTab(vm: MainViewModel) {
     val d = vm.drawing
+    var textAt by remember { mutableStateOf<Pair<Float, Float>?>(null) }
+    textAt?.let { (x, y) ->
+        TextEntryDialog(
+            maxBytes = d.textBudget,
+            onDone = { text -> d.addText(text, x, y); textAt = null },
+            onDismiss = { textAt = null },
+        )
+    }
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            DrawingState.Tool.entries.forEachIndexed { i, t ->
+                SegmentedButton(
+                    selected = d.tool == t,
+                    onClick = { d.tool = t },
+                    shape = SegmentedButtonDefaults.itemShape(i, DrawingState.Tool.entries.size),
+                ) { Text(if (t == DrawingState.Tool.PEN) "✏️ Pen" else "🔤 Text") }
+            }
+        }
         DoodleCanvas(
             d,
-            Modifier.fillMaxWidth()
+            onTextTap = { x, y -> if (d.textBudget > 0) textAt = x to y },
+            modifier = Modifier.fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
                 .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(16.dp)),
         )
@@ -94,7 +120,23 @@ private fun DrawTab(vm: MainViewModel) {
                 )
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (d.tool == DrawingState.Tool.TEXT) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                DrawingState.TEXT_SIZES.forEachIndexed { i, s ->
+                    val selected = d.textSize == s
+                    Box(
+                        Modifier.size(40.dp).clip(CircleShape)
+                            .border(if (selected) 2.dp else 1.dp,
+                                if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                                CircleShape)
+                            .clickable { d.textSize = s },
+                        contentAlignment = Alignment.Center,
+                    ) { Text("A", color = Color(d.color), fontSize = (12 + i * 6).sp, fontWeight = FontWeight.Bold) }
+                }
+                Text("Tap the canvas to place text", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        } else Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             DrawingState.WIDTHS.forEachIndexed { i, w ->
                 val dot = (6 + i * 7).dp
                 Box(
@@ -118,6 +160,27 @@ private fun DrawTab(vm: MainViewModel) {
 }
 
 @Composable
+private fun TextEntryDialog(maxBytes: Int, onDone: (String) -> Unit, onDismiss: () -> Unit) {
+    var text by remember { mutableStateOf("") }
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focus.requestFocus() }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add text") },
+        text = {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { if (it.toByteArray().size <= maxBytes) text = it },
+                placeholder = { Text("Say something…") },
+                modifier = Modifier.focusRequester(focus),
+            )
+        },
+        confirmButton = { TextButton(onClick = { onDone(text) }, enabled = text.isNotBlank()) { Text("Add") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
 private fun ReceivedTab(vm: MainViewModel) {
     val doodle = vm.received
     Column(
@@ -134,7 +197,7 @@ private fun ReceivedTab(vm: MainViewModel) {
             )
         } else {
             DoodleView(
-                doodle.strokes,
+                doodle.marks,
                 Modifier.fillMaxWidth()
                     .clip(RoundedCornerShape(16.dp))
                     .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(16.dp)),

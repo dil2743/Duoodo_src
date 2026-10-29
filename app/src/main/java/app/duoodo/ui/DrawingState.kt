@@ -6,25 +6,31 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import app.duoodo.model.Doodle
 import app.duoodo.model.DoodleCodec
+import app.duoodo.model.Mark
 import app.duoodo.model.Stroke
+import app.duoodo.model.TextMark
 
-/** Editable doodle being drawn. Points are kept normalized (0..1). */
+/** Editable doodle being drawn. Positions are kept normalized (0..1). */
 class DrawingState {
-    val strokes = mutableStateListOf<Stroke>()
+    enum class Tool { PEN, TEXT }
+
+    val marks = mutableStateListOf<Mark>()
+    var tool by mutableStateOf(Tool.PEN)
     var current by mutableStateOf<FloatArray?>(null)
         private set
     var color by mutableStateOf(PALETTE.first())
     var width by mutableStateOf(WIDTHS[1])
+    var textSize by mutableStateOf(TEXT_SIZES[1])
 
     private var pending = FloatArrayBuilder()
     private var totalPoints = 0
     private var lastX = 0f
     private var lastY = 0f
 
-    val canUndo: Boolean get() = strokes.isNotEmpty()
+    val canUndo: Boolean get() = marks.isNotEmpty()
 
     fun start(x: Float, y: Float) {
-        if (strokes.size >= DoodleCodec.MAX_STROKES) return
+        if (marks.size >= DoodleCodec.MAX_MARKS) return
         pending = FloatArrayBuilder()
         add(x, y)
     }
@@ -39,21 +45,40 @@ class DrawingState {
 
     fun end() {
         val pts = current ?: return
-        strokes += Stroke(pts, color, width)
+        marks += Stroke(pts, color, width)
         current = null
     }
 
+    /** Remaining bytes for one more text, or 0 if no more text fits. */
+    val textBudget: Int
+        get() {
+            if (marks.size >= DoodleCodec.MAX_MARKS) return 0
+            val used = marks.filterIsInstance<TextMark>().sumOf { it.text.toByteArray().size }
+            return minOf(DoodleCodec.MAX_TEXT_BYTES, DoodleCodec.MAX_TOTAL_TEXT_BYTES - used).coerceAtLeast(0)
+        }
+
+    /** Adds text centered at (x, y); returns false if it doesn't fit the limits. */
+    fun addText(text: String, x: Float, y: Float): Boolean {
+        val t = text.trim()
+        if (t.isEmpty() || t.toByteArray().size > textBudget) return false
+        marks += TextMark(t, x.coerceIn(0f, 1f), y.coerceIn(0f, 1f), color, textSize)
+        return true
+    }
+
     fun undo() {
-        strokes.removeLastOrNull()?.let { totalPoints -= it.pointCount }
+        when (val m = marks.removeLastOrNull()) {
+            is Stroke -> totalPoints -= m.pointCount
+            else -> Unit
+        }
     }
 
     fun clear() {
-        strokes.clear()
+        marks.clear()
         current = null
         totalPoints = 0
     }
 
-    fun snapshot(nowMillis: Long): Doodle = Doodle(strokes.toList(), nowMillis)
+    fun snapshot(nowMillis: Long): Doodle = Doodle(marks.toList(), nowMillis)
 
     private fun add(x: Float, y: Float) {
         if (totalPoints >= DoodleCodec.MAX_TOTAL_POINTS) return
@@ -83,5 +108,6 @@ class DrawingState {
         /** Minimum distance between recorded points, as a fraction of the canvas side. */
         private const val MIN_STEP = 0.003f
         val WIDTHS = listOf(0.006f, 0.014f, 0.03f)
+        val TEXT_SIZES = listOf(0.045f, 0.07f, 0.11f)
     }
 }

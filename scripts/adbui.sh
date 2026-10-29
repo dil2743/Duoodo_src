@@ -4,9 +4,9 @@ ADB=${ADB:-$HOME/android/sdk/platform-tools/adb}
 
 dump() { timeout 20 $ADB -s "$1" shell "uiautomator dump /sdcard/ui.xml >/dev/null 2>&1 && cat /sdcard/ui.xml"; }
 
-# Center of the first node whose text starts with $2.
+# Center of the first node whose text is exactly $2.
 center() {
-  dump "$1" | grep -oE "text=\"$2[^\"]*\"[^>]*bounds=\"\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]\"" | head -1 \
+  dump "$1" | grep -oE "text=\"$2\"[^>]*bounds=\"\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]\"" | head -1 \
     | grep -oE 'bounds="[^"]*"' | grep -oE '[0-9]+' | tr '\n' ' ' | awk '{print int(($1+$3)/2), int(($2+$4)/2)}'
 }
 

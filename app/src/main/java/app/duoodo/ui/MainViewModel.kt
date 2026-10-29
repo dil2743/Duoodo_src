@@ -135,7 +135,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun send() {
-        if (drawing.strokes.isEmpty() || busy) return
+        if (drawing.marks.isEmpty() || busy) return
         val doodle = drawing.snapshot(System.currentTimeMillis())
         viewModelScope.launch {
             busy = true
