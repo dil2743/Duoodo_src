@@ -13,8 +13,8 @@ android {
         applicationId = "app.duoodo"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
     }
 
     buildTypes {
@@ -44,6 +44,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -63,6 +64,8 @@ dependencies {
     implementation(libs.bouncycastle)
     implementation(libs.okhttp)
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.zxing.core)
+    implementation(libs.play.services.code.scanner)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     testImplementation(libs.junit)

@@ -33,12 +33,28 @@ class NostrTransport(
         var lastSentDay: Long?
     }
 
+    /** What the partner's slot currently holds. */
+    sealed interface Incoming {
+        data class Note(val doodle: Doodle) : Incoming
+        /** The partner unpaired; the pairing is dead and nothing more should be sent. */
+        data object Unpaired : Incoming
+    }
+
     /** @throws IOException if no relay accepted the doodle. */
-    suspend fun send(doodle: Doodle) {
+    suspend fun send(doodle: Doodle) = publishPayload(DoodleCodec.encode(doodle))
+
+    /**
+     * Tells the partner we unpaired. It replaces our last doodle in the same slot, so relays see
+     * just another padded, encrypted update and our old doodle is gone from them too.
+     * @throws IOException if no relay accepted it.
+     */
+    suspend fun sendGoodbye() = publishPayload(GOODBYE)
+
+    private suspend fun publishPayload(payload: ByteArray) {
         val nowSec = clock() / 1000
         val day = nowSec / DAY_SECONDS
         val dir = pairing.outgoing
-        val sealed = Envelope.seal(pairing.messageKey(dir), DoodleCodec.encode(doodle), aad(dir))
+        val sealed = Envelope.seal(pairing.messageKey(dir), payload, aad(dir))
         val event = NostrEvent.sign(
             pairing.nostrPrivateKey(dir, day),
             nowSec,
@@ -54,24 +70,32 @@ class NostrTransport(
     }
 
     /** Returns the newest doodle from the partner on any relay, or null if none can be read. */
-    suspend fun fetchLatest(): Doodle? =
-        relays.query(incomingFilter())
-            .mapNotNull(::open)
-            // The timestamp inside the ciphertext is authenticated; the relay's created_at is not.
-            .maxByOrNull { it.createdAtMillis }
+    suspend fun fetchLatest(): Doodle? = (fetch() as? Incoming.Note)?.doodle
+
+    /**
+     * Reads the partner's slot from all relays. A goodbye wins over any doodle: once the partner has
+     * unpaired, a stale relay still holding an older doodle must not hide that.
+     */
+    suspend fun fetch(): Incoming? {
+        val items = relays.query(incomingFilter()).mapNotNull(::read)
+        if (items.any { it is Incoming.Unpaired }) return Incoming.Unpaired
+        // The timestamp inside the ciphertext is authenticated; the relay's created_at is not.
+        return items.filterIsInstance<Incoming.Note>().maxByOrNull { it.doodle.createdAtMillis }
+    }
 
     /** Relay filter matching the partner's doodle events (also used for live subscriptions). */
     fun incomingFilter(): JsonObject =
         RelayPool.filter(listOf(NostrEvent.KIND_APP_DATA), authors = incomingAuthors(), dTags = listOf(pairing.slotTag))
 
-    /** Decrypts a doodle event from the partner; null if it isn't one. */
-    fun open(event: NostrEvent): Doodle? {
+    /** Decrypts an event from the partner's slot; null if it isn't one of theirs. */
+    fun read(event: NostrEvent): Incoming? {
         if (event.kind != NostrEvent.KIND_APP_DATA || event.tag("d") != pairing.slotTag) return null
         if (event.pubkey !in incomingAuthors()) return null
         val dir = pairing.incoming
-        return runCatching {
-            DoodleCodec.decode(Envelope.open(pairing.messageKey(dir), event.content.fromBase64(), aad(dir)))
-        }.getOrNull()
+        val payload = runCatching { Envelope.open(pairing.messageKey(dir), event.content.fromBase64(), aad(dir)) }.getOrNull()
+            ?: return null
+        if (payload.contentEquals(GOODBYE)) return Incoming.Unpaired
+        return runCatching { Incoming.Note(DoodleCodec.decode(payload)) }.getOrNull()
     }
 
     @Volatile private var authorsCache: Pair<Long, List<String>>? = null
@@ -101,5 +125,7 @@ class NostrTransport(
         const val DAY_SECONDS = 86_400L
         const val EXPIRY_SECONDS = 7 * DAY_SECONDS
         private const val LOOKBACK_DAYS = 7L
+        /** Can never be a valid doodle: doodles start with their format version (1, 2, …). */
+        private val GOODBYE = byteArrayOf(0, 'b'.code.toByte(), 'y'.code.toByte(), 'e'.code.toByte())
     }
 }

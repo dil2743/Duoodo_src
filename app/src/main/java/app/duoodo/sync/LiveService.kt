@@ -40,14 +40,16 @@ class LiveService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        isRunning = true
         ensureChannel(this)
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC else 0
         ServiceCompat.startForeground(this, NOTIFICATION_ID, notification(this), type)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val pairing = PairingRepository(this).pairing
-        if (pairing == null || !Settings(this).instantDelivery) {
+        val repo = PairingRepository(this)
+        val pairing = repo.pairing
+        if (pairing == null || repo.partnerLeft || !Settings(this).instantDelivery) {
             stopSelf()
             return START_NOT_STICKY
         }
@@ -80,6 +82,7 @@ class LiveService : Service() {
     }
 
     override fun onDestroy() {
+        isRunning = false
         networkCallback?.let { runCatching { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(it) } }
         receiver?.stop()
         scope.cancel()
@@ -87,13 +90,18 @@ class LiveService : Service() {
     }
 
     companion object {
+        /** True while the service (and so the live connection) is alive in this process. */
+        @Volatile var isRunning = false
+            private set
+
         private const val CHANNEL_ID = "live"
         private const val NOTIFICATION_ID = 1
 
         /** Starts or stops the service to match the current pairing and setting. */
         fun sync(context: Context) {
             val app = context.applicationContext
-            val wanted = PairingRepository(app).pairing != null && Settings(app).instantDelivery
+            val repo = PairingRepository(app)
+            val wanted = repo.pairing != null && !repo.partnerLeft && Settings(app).instantDelivery
             val intent = Intent(app, LiveService::class.java)
             if (wanted) {
                 // Starting from the background can be refused on newer Android; the periodic check covers that.

@@ -14,10 +14,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.draw.clip
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -36,14 +42,18 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 @Composable
 private fun PairingColumn(content: @Composable () -> Unit) {
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) { content() }
+    Column(Modifier.fillMaxSize()) {
+        Column(
+            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) { content() }
+        Footer()
+    }
 }
 
 @Composable
@@ -60,7 +70,19 @@ fun UnpairedScreen(vm: MainViewModel) {
         Spacer(Modifier.height(8.dp))
         Button(onClick = vm::createInvite, modifier = Modifier.fillMaxWidth()) { Text("Create invite code") }
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
-        Text("Got a code from your partner? Paste it here.", style = MaterialTheme.typography.bodyMedium)
+        Text("Joining your partner?", style = MaterialTheme.typography.titleMedium)
+        val context = LocalContext.current
+        OutlinedButton(
+            onClick = {
+                // Google's scanner runs inside Play services, so Duoodo needs no camera permission.
+                val options = GmsBarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build()
+                GmsBarcodeScanning.getClient(context, options).startScan()
+                    .addOnSuccessListener { code -> code.rawValue?.let(vm::acceptInvite) }
+            },
+            enabled = !vm.busy,
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("📷 Scan their QR code") }
+        Text("…or paste the code they sent you", style = MaterialTheme.typography.bodyMedium)
         OutlinedTextField(
             value = pasted,
             onValueChange = { pasted = it },
@@ -79,18 +101,19 @@ fun InvitingScreen(vm: MainViewModel, code: String) {
     PairingColumn {
         Text("Your invite code", style = MaterialTheme.typography.headlineSmall)
         Text(
-            "Copy it and send it to your partner over WhatsApp, Signal, or any messenger. " +
+            "Let your partner scan it, or copy the code and send it over WhatsApp, Signal, or any messenger. " +
                 "Once they join you stay paired until one of you unpairs. " +
-                "The code is valid for 24 hours and for one person only.",
+                "Valid for 24 hours and for one person only.",
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        QrCode(code, Modifier.widthIn(max = 240.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)))
         Surface(
             color = MaterialTheme.colorScheme.surfaceVariant,
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text(code, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(16.dp))
+            Text(code, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(12.dp))
         }
         Button(onClick = { copyToClipboard(context, code); copied = true }, modifier = Modifier.fillMaxWidth()) {
             Text(if (copied) "Copied ✓" else "Copy code")
@@ -116,6 +139,21 @@ fun JoiningScreen(vm: MainViewModel) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         TextButton(onClick = vm::unpair) { Text("Cancel") }
+    }
+}
+
+@Composable
+fun PartnerLeftScreen(vm: MainViewModel) {
+    PairingColumn {
+        Spacer(Modifier.height(48.dp))
+        Text("💔", fontSize = 56.sp)
+        Text("Your partner unpaired", style = MaterialTheme.typography.headlineSmall)
+        Text(
+            "Nothing more can be sent or received on this pairing. Their last doodle has been removed from this phone.",
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Button(onClick = vm::unpair, modifier = Modifier.fillMaxWidth()) { Text("Start over") }
     }
 }
 

@@ -25,6 +25,21 @@ class LatestDoodleStore(context: Context) {
         file.delete()
     }
 
+    private val clearedFile = File(context.noBackupFilesDir, "cleared_up_to")
+
+    /** Timestamp of the newest doodle the user cleared; anything up to it stays hidden. */
+    fun clearedUpTo(): Long = runCatching { clearedFile.readText().toLong() }.getOrDefault(0L)
+
+    fun markCleared(createdAtMillis: Long) {
+        clearedFile.writeText(createdAtMillis.toString())
+    }
+
+    /** Forgets everything, including what was cleared (used when unpairing). */
+    fun reset() {
+        clear()
+        clearedFile.delete()
+    }
+
     fun overwrite(doodle: Doodle) {
         val bytes = DoodleCodec.encode(doodle)
         val out = file.startWrite()

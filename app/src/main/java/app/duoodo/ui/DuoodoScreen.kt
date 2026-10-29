@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -56,6 +57,8 @@ import android.net.Uri
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import app.duoodo.BuildConfig
+import app.duoodo.data.Exporter
 import app.duoodo.widget.DuoodoWidget
 import java.text.DateFormat
 import java.util.Date
@@ -76,16 +79,20 @@ fun DuoodoScreen(vm: MainViewModel) {
                 MainViewModel.PairState.Unpaired -> return@Column UnpairedScreen(vm)
                 is MainViewModel.PairState.Inviting -> return@Column InvitingScreen(vm, state.code)
                 MainViewModel.PairState.Joining -> return@Column JoiningScreen(vm)
+                MainViewModel.PairState.PartnerLeft -> return@Column PartnerLeftScreen(vm)
                 MainViewModel.PairState.Paired -> Unit
             }
             TabRow(selectedTabIndex = tab) {
                 Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Draw") })
                 Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Received") })
             }
-            when (tab) {
-                0 -> DrawTab(vm)
-                else -> ReceivedTab(vm)
+            Box(Modifier.weight(1f)) {
+                when (tab) {
+                    0 -> DrawTab(vm)
+                    else -> ReceivedTab(vm)
+                }
             }
+            Footer()
         }
     }
 }
@@ -164,6 +171,19 @@ private fun DrawTab(vm: MainViewModel) {
             Button(onClick = vm::send, enabled = d.canUndo && !vm.busy) { Text(if (vm.busy) "Sending…" else "Send") }
         }
     }
+}
+
+private val CompactPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+
+@Composable
+fun Footer() {
+    Text(
+        "Duoodo v${BuildConfig.VERSION_NAME} · by Dilshad",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+    )
 }
 
 @Composable
@@ -245,9 +265,33 @@ private fun ReceivedTab(vm: MainViewModel) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        OutlinedButton(onClick = vm::checkNow) { Text("Check now") }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(onClick = vm::checkNow, contentPadding = CompactPadding) { Text("🔄 Check") }
+            if (doodle != null && !doodle.isEmpty && Exporter.isSupported) {
+                OutlinedButton(onClick = vm::saveReceived, contentPadding = CompactPadding) { Text("💾 Save") }
+            }
+            if (doodle != null) {
+                var confirmClear by remember { mutableStateOf(false) }
+                OutlinedButton(onClick = { confirmClear = true }, contentPadding = CompactPadding) { Text("🗑 Clear") }
+                if (confirmClear) {
+                    AlertDialog(
+                        onDismissRequest = { confirmClear = false },
+                        title = { Text("Clear this doodle?") },
+                        text = { Text("It's removed from this phone and your widget. Your partner isn't affected.") },
+                        confirmButton = { TextButton(onClick = { confirmClear = false; vm.clearReceived() }) { Text("Clear") } },
+                        dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Cancel") } },
+                    )
+                }
+            }
+        }
         val context = LocalContext.current
-        if (DuoodoWidget.canRequestPin(context)) {
+        // Re-checked on every resume, so the button disappears once the widget is placed.
+        var widgetPlaced by remember { mutableStateOf(DuoodoWidget.isPlaced(context)) }
+        LifecycleResumeEffect(Unit) {
+            widgetPlaced = DuoodoWidget.isPlaced(context)
+            onPauseOrDispose { }
+        }
+        if (!widgetPlaced && DuoodoWidget.canRequestPin(context)) {
             TextButton(onClick = { DuoodoWidget.requestPin(context) }) { Text("Add widget to home screen") }
         }
         DeliverySettings(vm)

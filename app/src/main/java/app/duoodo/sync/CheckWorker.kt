@@ -18,7 +18,7 @@ class CheckWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
 
     override suspend fun doWork(): Result {
         try {
-            Sync.check(applicationContext)
+            Sync.backgroundCheck(applicationContext)
         } catch (e: Exception) {
             // A failed check (offline, relay down) just waits for the next one.
         }

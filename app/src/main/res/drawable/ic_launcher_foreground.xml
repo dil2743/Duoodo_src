@@ -1,7 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A little bird drawn in pen, mid-chirp, trailing a line of ink: a doodle that flies to your partner.
+     Kept within the adaptive-icon safe circle (center 54,54, radius 33). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
-    <path android:strokeColor="#FFFFFF" android:strokeWidth="6" android:strokeLineCap="round"
-        android:fillColor="#00000000"
-        android:pathData="M34,62 C40,40 50,40 54,54 C58,68 68,68 74,46" />
+    <group android:translateX="-3" android:translateY="1">
+
+        <!-- Body: tail, back, round head, beak, belly -->
+        <path android:fillColor="#FFFFFFFF"
+            android:pathData="M33,64 C38,62.5 42,60.5 45,57 C43,51 44,43 50,38.5 C55.5,34.5 63,34.5 67.5,38.5 C70.5,41 71.8,44.5 71.5,48 L78.5,50 L71,52.5 C69.5,61 62,67 52,67 C46,67 40.5,66 33,64 Z" />
+
+        <!-- Folded wing: a tapered pen stroke pointing back toward the tail -->
+        <path android:fillColor="#FFD9DCFF"
+            android:pathData="M64,52 C60,59 52,62 42,61 C47,58.5 50.5,55 52.5,50.5 C56,52.5 60,53 64,52 Z" />
+
+        <!-- Eye -->
+        <path android:fillColor="#FF26245C"
+            android:pathData="M62,44.5m-2.4,0a2.4,2.4 0,1 1,4.8 0a2.4,2.4 0,1 1,-4.8 0" />
+
+        <!-- Chirp ticks -->
+        <path android:strokeColor="#FFFFD54F" android:strokeWidth="2.6" android:strokeLineCap="round"
+            android:fillColor="#00000000" android:pathData="M81,43 L84.5,39.5" />
+        <path android:strokeColor="#FFFFD54F" android:strokeWidth="2.6" android:strokeLineCap="round"
+            android:fillColor="#00000000" android:pathData="M82.5,49 L87,48" />
+
+        <!-- Ink trail: the doodle it carries -->
+        <path android:strokeColor="#8CFFFFFF" android:strokeWidth="2.6" android:strokeLineCap="round"
+            android:fillColor="#00000000"
+            android:pathData="M27,72 C31,68.5 34.5,73 38.5,70.5 C42,68.5 44.5,71.5 48,70.5" />
+    </group>
 </vector>

@@ -14,7 +14,7 @@ class LiveReceiver(context: Context, pairing: Pairing) {
     private val subscriber = RelaySubscriber(
         urls = RelayPool.DEFAULT_RELAYS.take(LIVE_RELAYS),
         filter = { transport.incomingFilter() },
-        onEvent = { event -> transport.open(event)?.let { Inbox.deliver(app, it) } },
+        onEvent = { event -> transport.read(event)?.let { Inbox.handle(app, it) } },
     )
 
     fun start(scope: CoroutineScope) = subscriber.start(scope)

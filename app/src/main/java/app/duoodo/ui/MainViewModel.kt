@@ -12,9 +12,11 @@ import app.duoodo.model.Doodle
 import app.duoodo.pairing.Invite
 import app.duoodo.pairing.Handshake
 import app.duoodo.pairing.PendingInvite
+import app.duoodo.data.Exporter
 import app.duoodo.data.Settings
 import app.duoodo.sync.Inbox
 import app.duoodo.sync.LiveService
+import app.duoodo.sync.PartnerLeftException
 import app.duoodo.sync.Sync
 import app.duoodo.widget.DuoodoWidget
 import kotlinx.coroutines.Dispatchers
@@ -34,6 +36,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         data class Inviting(val code: String) : PairState
         data object Joining : PairState
         data object Paired : PairState
+        data object PartnerLeft : PairState
     }
 
     val drawing = DrawingState()
@@ -55,7 +58,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         refreshPairState()
         // Redraw as soon as the live connection (or any check) stores a newer doodle.
         viewModelScope.launch {
-            Inbox.updates.collect { received = withContext(Dispatchers.IO) { store.read() } }
+            Inbox.updates.collect {
+                received = withContext(Dispatchers.IO) { store.read() }
+                if (repo.partnerLeft && pairState != PairState.PartnerLeft) refreshPairState()
+            }
         }
     }
 
@@ -69,6 +75,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val pairing = repo.pairing
         val pending = repo.pendingInvite
         pairState = when {
+            pairing != null && repo.partnerLeft -> PairState.PartnerLeft
             pairing != null -> PairState.Paired
             pending != null -> PairState.Inviting(pending.invite.toCode())
             repo.joining != null -> PairState.Joining
@@ -130,13 +137,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Optional check: both phones show the same emojis only if nobody tampered with the invite. */
     val safetyEmojis: List<String>? get() = repo.pairing?.safetyEmojis
 
-    /** Also used for cancelling an invite. */
+    /** Also used for cancelling an invite and for leaving a pairing the partner already ended. */
     fun unpair() {
-        repo.unpair()
         drawing.clear()
         received = null
-        refreshPairState()
-        viewModelScope.launch { DuoodoWidget.refreshAll(getApplication()) }
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { Sync.unpair(getApplication()) }
+            refreshPairState()
+            DuoodoWidget.refreshAll(getApplication())
+        }
     }
 
     // --- Doodles ---
@@ -160,11 +169,33 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 withContext(Dispatchers.IO) { Sync.send(getApplication(), doodle) }
                 drawing.clear()
                 "Sent ✓"
+            } catch (e: PartnerLeftException) {
+                refreshPairState()
+                null
             } catch (e: Exception) {
                 "Couldn't send. Check your connection."
             } finally {
                 busy = false
             }
+        }
+    }
+
+    fun saveReceived() {
+        val doodle = received ?: return
+        viewModelScope.launch {
+            status = try {
+                val name = withContext(Dispatchers.IO) { Exporter.save(getApplication(), doodle) }
+                "Saved to Pictures/${Exporter.FOLDER}/$name"
+            } catch (e: Exception) {
+                "Couldn't save the doodle."
+            }
+        }
+    }
+
+    fun clearReceived() {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { Inbox.clearReceived(getApplication()) }
+            received = null
         }
     }
 

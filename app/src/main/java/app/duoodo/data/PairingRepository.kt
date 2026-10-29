@@ -35,10 +35,15 @@ class PairingRepository(context: Context) : Handshake.State {
             set(value) = secrets.put(LAST_SENT_DAY, value?.let { ByteBuffer.allocate(8).putLong(it).array() })
     }
 
+    /** Set when the partner unpaired; the pairing is kept only so the screen can explain what happened. */
+    var partnerLeft: Boolean
+        get() = secrets.get(PARTNER_LEFT)?.firstOrNull() == 1.toByte()
+        set(value) = secrets.put(PARTNER_LEFT, if (value) byteArrayOf(1) else null)
+
     /** Forget the partner and everything received from them. */
     fun unpair() {
-        listOf(PAIRING, PENDING, JOINING, JOINING_SINCE, LAST_SENT_DAY).forEach { secrets.put(it, null) }
-        latest.clear()
+        listOf(PAIRING, PENDING, JOINING, JOINING_SINCE, LAST_SENT_DAY, PARTNER_LEFT).forEach { secrets.put(it, null) }
+        latest.reset()
     }
 
     private companion object {
@@ -47,5 +52,6 @@ class PairingRepository(context: Context) : Handshake.State {
         const val JOINING = "joining"
         const val JOINING_SINCE = "joining_since"
         const val LAST_SENT_DAY = "last_sent_day"
+        const val PARTNER_LEFT = "partner_left"
     }
 }

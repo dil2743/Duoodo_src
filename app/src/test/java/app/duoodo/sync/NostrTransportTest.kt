@@ -103,4 +103,30 @@ class NostrTransportTest {
             runBlocking { NostrTransport(a, relays, MemState(), clock).send(doodle(now)) }
         }
     }
+
+    @Test
+    fun goodbyeReplacesLastDoodleAndIsSeenByPartner() = runBlocking {
+        val (a, b) = pair()
+        val ta = NostrTransport(a, relays, MemState(), clock)
+        val tb = NostrTransport(b, relays, MemState(), clock)
+        ta.send(doodle(now))
+        assertTrue(tb.fetch() is NostrTransport.Incoming.Note)
+        now += 1000
+        ta.sendGoodbye()
+        assertEquals(NostrTransport.Incoming.Unpaired, tb.fetch())
+        assertNull("old doodle no longer readable", tb.fetchLatest())
+        assertEquals(1, relays.stored.count { it.tag("d") == a.slotTag })
+    }
+
+    @Test
+    fun goodbyeWinsOverAStaleDoodleOnAnotherRelay() = runBlocking {
+        val (a, b) = pair()
+        val ta = NostrTransport(a, relays, MemState(), clock)
+        ta.send(doodle(now))
+        val stale = relays.stored.last { it.tag("d") == a.slotTag }
+        now += 1000
+        ta.sendGoodbye()
+        relays.stored += stale // simulates a relay that still serves the older event
+        assertEquals(NostrTransport.Incoming.Unpaired, NostrTransport(b, relays, MemState(), clock).fetch())
+    }
 }

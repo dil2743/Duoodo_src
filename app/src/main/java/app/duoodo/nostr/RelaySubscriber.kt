@@ -131,11 +131,14 @@ class RelaySubscriber(
         private const val CONNECT_TIMEOUT_MILLIS = 15_000L
         private const val HEALTHY_MILLIS = 60_000L
 
-        /** No read timeout; WebSocket pings detect dead connections instead. */
+        /**
+         * No read timeout; WebSocket pings detect dead connections instead. 60 s keeps mobile-carrier
+         * NATs from dropping the idle connection while costing only a few hundred bytes per ping.
+         */
         val liveClient: OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(0, TimeUnit.MILLISECONDS)
-            .pingInterval(45, TimeUnit.SECONDS)
+            .pingInterval(60, TimeUnit.SECONDS)
             .build()
     }
 }
