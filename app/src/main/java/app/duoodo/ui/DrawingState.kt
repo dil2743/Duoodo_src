@@ -24,13 +24,13 @@ import kotlin.math.sin
 class DrawingState {
     /** Ordered by how often they're reached for, so the first screenful holds the essentials. */
     enum class Tool(val label: String) {
-        PEN("Pen"), TEXT("Text"), EMOJI("Emoji"), ARROW("Arrow"), ERASER("Eraser"),
+        PEN("Pen"), TEXT("Text"), EMOJI("Emoji"), IMAGE("Image"), ARROW("Arrow"), ERASER("Eraser"),
         MARKER("Marker"), RAINBOW("Rainbow"), LINE("Line"), BOX("Box"), CIRCLE("Circle");
 
         val isFreehand get() = this == PEN || this == MARKER || this == RAINBOW || this == ERASER
         val isShape get() = this == LINE || this == ARROW || this == BOX || this == CIRCLE
         val usesWidth get() = isFreehand || isShape
-        val usesColor get() = this != ERASER && this != EMOJI && this != RAINBOW
+        val usesColor get() = this != ERASER && this != EMOJI && this != RAINBOW && this != IMAGE
     }
 
     /** Committed marks, flattened from [steps] for rendering and sending. */
@@ -45,6 +45,14 @@ class DrawingState {
     var width by mutableStateOf(WIDTHS[1])
     var textSize by mutableStateOf(TEXT_SIZES[1])
     var emoji by mutableStateOf(EMOJIS.first())
+    var imageBytes by mutableStateOf<ByteArray?>(null)
+
+    // Dynamic placement for Emojis and Images (drag, pinch-to-scale, rotate)
+    private var placementX = 0f
+    private var placementY = 0f
+    private var placementScale = 1f
+    private var placementRotation = 0f
+    private var isPlacing = false
 
     private val steps = mutableListOf<Int>()        // number of marks added per undo step
     private val redoStack = mutableListOf<List<Mark>>()
@@ -66,6 +74,63 @@ class DrawingState {
     private val totalPoints: Int get() = marks.sumOf { (it as? Stroke)?.pointCount ?: 0 }
 
     // --- Gestures (normalized coordinates) ---
+
+    fun startPlacement(x: Float, y: Float) {
+        if (marks.size >= DoodleCodec.MAX_MARKS) return
+        isPlacing = true
+        placementX = x.clamp()
+        placementY = y.clamp()
+        placementScale = 1f
+        placementRotation = 0f
+        updatePlacementPreview()
+    }
+
+    fun updatePlacement(dx: Float, dy: Float, zoom: Float, rot: Float) {
+        if (!isPlacing) return
+        placementX = (placementX + dx).clamp()
+        placementY = (placementY + dy).clamp()
+        placementScale = (placementScale * zoom).coerceIn(0.2f, 5f)
+        placementRotation += rot
+        updatePlacementPreview()
+    }
+
+    private fun updatePlacementPreview() {
+        preview = when (tool) {
+            Tool.EMOJI -> listOf(
+                TextMark(
+                    emoji,
+                    placementX,
+                    placementY,
+                    0xFF000000.toInt(),
+                    textSize * EMOJI_SCALE * placementScale,
+                    placementRotation
+                )
+            )
+            Tool.IMAGE -> imageBytes?.let {
+                listOf(
+                    app.duoodo.model.ImageMark(
+                        it,
+                        placementX,
+                        placementY,
+                        0.4f * placementScale,
+                        placementRotation
+                    )
+                )
+            } ?: emptyList()
+            else -> emptyList()
+        }
+    }
+
+    fun endPlacement() {
+        if (!isPlacing) return
+        isPlacing = false
+        val made = preview
+        preview = emptyList()
+        if (made.isEmpty()) return
+        if (tool == Tool.EMOJI && emoji.toByteArray().size > textBudget) return
+        if (tool == Tool.IMAGE && (imageBytes?.size ?: 0) > imageBudget) return
+        commit(made)
+    }
 
     fun start(x: Float, y: Float) {
         if (!tool.usesWidth || marks.size >= DoodleCodec.MAX_MARKS) return
@@ -112,7 +177,7 @@ class DrawingState {
             Tool.ARROW -> arrow(startX, startY, x.clamp(), y.clamp(), color, width)
             Tool.BOX -> listOf(Stroke(box(startX, startY, x.clamp(), y.clamp()), color, width))
             Tool.CIRCLE -> listOf(Stroke(ellipse(startX, startY, x.clamp(), y.clamp()), color, width))
-            Tool.TEXT, Tool.EMOJI -> emptyList()
+            Tool.TEXT, Tool.EMOJI, Tool.IMAGE -> emptyList()
         }
     }
 
@@ -124,6 +189,14 @@ class DrawingState {
             if (marks.size >= DoodleCodec.MAX_MARKS) return 0
             val used = marks.filterIsInstance<TextMark>().sumOf { it.text.toByteArray().size }
             return minOf(DoodleCodec.MAX_TEXT_BYTES, DoodleCodec.MAX_TOTAL_TEXT_BYTES - used).coerceAtLeast(0)
+        }
+
+    /** Remaining bytes for images under the payload budget. */
+    val imageBudget: Int
+        get() {
+            if (marks.size >= DoodleCodec.MAX_MARKS) return 0
+            val used = marks.filterIsInstance<app.duoodo.model.ImageMark>().sumOf { it.bytes.size }
+            return minOf(DoodleCodec.MAX_IMAGE_BYTES, DoodleCodec.MAX_TOTAL_IMAGE_BYTES - used).coerceAtLeast(0)
         }
 
     /** Adds text centered at (x, y); returns false if it doesn't fit the limits. */

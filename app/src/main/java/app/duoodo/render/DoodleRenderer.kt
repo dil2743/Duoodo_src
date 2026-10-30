@@ -10,6 +10,7 @@ import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
 import app.duoodo.model.Doodle
+import app.duoodo.model.ImageMark
 import app.duoodo.model.Mark
 import app.duoodo.model.Stroke
 import app.duoodo.model.TextMark
@@ -91,7 +92,29 @@ object DoodleRenderer {
         for (mark in marks) when (mark) {
             is Stroke -> drawStroke(canvas, mark, side, paint)
             is TextMark -> drawText(canvas, mark, side)
+            is ImageMark -> drawImage(canvas, mark, side)
         }
+    }
+
+    private val bitmapCache = android.util.LruCache<java.nio.ByteBuffer, Bitmap>(10)
+
+    private fun drawImage(canvas: Canvas, mark: ImageMark, side: Float) {
+        if (mark.bytes.isEmpty() || side <= 0f) return
+        val key = java.nio.ByteBuffer.wrap(mark.bytes)
+        var bmp = bitmapCache.get(key)
+        if (bmp == null) {
+            bmp = android.graphics.BitmapFactory.decodeByteArray(mark.bytes, 0, mark.bytes.size) ?: return
+            bitmapCache.put(key, bmp)
+        }
+        canvas.save()
+        canvas.translate(mark.x * side, mark.y * side)
+        canvas.rotate(mark.rotation)
+        val destWidth = side * mark.scale
+        val destHeight = destWidth * bmp.height / bmp.width
+        canvas.scale(destWidth / bmp.width, destHeight / bmp.height)
+        canvas.translate(-bmp.width / 2f, -bmp.height / 2f)
+        canvas.drawBitmap(bmp, 0f, 0f, null)
+        canvas.restore()
     }
 
     private fun drawStroke(canvas: Canvas, stroke: Stroke, size: Float, paint: Paint) {
@@ -148,6 +171,7 @@ object DoodleRenderer {
         val left = (mark.x * side - width / 2f).coerceIn(0f, side - width)
         val top = (mark.y * side - layout.height / 2f).coerceIn(0f, (side - layout.height).coerceAtLeast(0f))
         canvas.save()
+        canvas.rotate(mark.rotation, mark.x * side, mark.y * side)
         canvas.translate(left, top)
         layout.draw(canvas)
         canvas.restore()

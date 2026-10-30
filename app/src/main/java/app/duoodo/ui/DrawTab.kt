@@ -1,5 +1,12 @@
 package app.duoodo.ui
 
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.Canvas
@@ -41,6 +48,7 @@ import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.EmojiEmotions
 import androidx.compose.material.icons.rounded.Highlight
 import androidx.compose.material.icons.rounded.HorizontalRule
+import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.TextFields
 import androidx.compose.material3.AlertDialog
@@ -60,6 +68,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -75,9 +84,14 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import java.io.ByteArrayOutputStream
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun DrawTab(vm: MainViewModel) = DrawContent(vm.drawing, vm.busy, vm::send)
@@ -85,6 +99,22 @@ fun DrawTab(vm: MainViewModel) = DrawContent(vm.drawing, vm.busy, vm::send)
 /** The draw screen, independent of the ViewModel so it can be previewed and snapshot-tested. */
 @Composable
 fun DrawContent(d: DrawingState, busy: Boolean, onSend: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val bytes = withContext(Dispatchers.IO) {
+                    compressImage(context, uri, d.imageBudget)
+                }
+                if (bytes != null) {
+                    d.imageBytes = bytes
+                    d.tool = DrawingState.Tool.IMAGE
+                }
+            }
+        }
+    }
+
     var textAt by remember { mutableStateOf<Pair<Float, Float>?>(null) }
     textAt?.let { (x, y) ->
         TextEntryDialog(
@@ -123,7 +153,6 @@ fun DrawContent(d: DrawingState, busy: Boolean, onSend: () -> Unit) {
                     onTap = { x, y ->
                         when (d.tool) {
                             DrawingState.Tool.TEXT -> if (d.textBudget > 0) textAt = x to y
-                            DrawingState.Tool.EMOJI -> d.stamp(x, y)
                             else -> Unit
                         }
                     },
@@ -138,8 +167,8 @@ fun DrawContent(d: DrawingState, busy: Boolean, onSend: () -> Unit) {
                     )
                 }
             }
-            ToolStrip(d)
-            ToolOptions(d)
+            ToolStrip(d, onPickImage = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) })
+            ToolOptions(d, onPickImage = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) })
         }
         ActionBar(d, busy, onSend, onClear = { confirmClear = true })
     }
@@ -147,7 +176,8 @@ fun DrawContent(d: DrawingState, busy: Boolean, onSend: () -> Unit) {
 
 private fun hintFor(tool: DrawingState.Tool) = when (tool) {
     DrawingState.Tool.TEXT -> "Tap anywhere to write"
-    DrawingState.Tool.EMOJI -> "Pick an emoji, then tap to stamp it"
+    DrawingState.Tool.EMOJI -> "Touch & drag to place. Pinch to scale & rotate"
+    DrawingState.Tool.IMAGE -> "Touch & drag to place. Pinch to scale & rotate"
     DrawingState.Tool.LINE, DrawingState.Tool.ARROW, DrawingState.Tool.BOX, DrawingState.Tool.CIRCLE -> "Drag to draw a shape"
     else -> "Draw something for your partner"
 }
@@ -163,10 +193,11 @@ private fun iconFor(tool: DrawingState.Tool): ImageVector? = when (tool) {
     DrawingState.Tool.CIRCLE -> Icons.Rounded.RadioButtonUnchecked
     DrawingState.Tool.TEXT -> Icons.Rounded.TextFields
     DrawingState.Tool.EMOJI -> Icons.Rounded.EmojiEmotions
+    DrawingState.Tool.IMAGE -> Icons.Rounded.Image
 }
 
 @Composable
-private fun ToolStrip(d: DrawingState) {
+private fun ToolStrip(d: DrawingState, onPickImage: () -> Unit) {
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 2.dp)) {
         items(DrawingState.Tool.entries) { tool ->
             val selected = d.tool == tool
@@ -179,7 +210,13 @@ private fun ToolStrip(d: DrawingState) {
                 Modifier
                     .clip(MaterialTheme.shapes.medium)
                     .background(bg)
-                    .clickable { d.tool = tool }
+                    .clickable {
+                        if (tool == DrawingState.Tool.IMAGE) {
+                            onPickImage()
+                        } else {
+                            d.tool = tool
+                        }
+                    }
                     .padding(horizontal = 12.dp, vertical = 8.dp)
                     .widthIn(min = 44.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -226,7 +263,7 @@ private fun EraserGlyph(color: Color) {
 }
 
 @Composable
-private fun ToolOptions(d: DrawingState) {
+private fun ToolOptions(d: DrawingState, onPickImage: () -> Unit) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         shape = MaterialTheme.shapes.large,
@@ -235,11 +272,30 @@ private fun ToolOptions(d: DrawingState) {
         AnimatedContent(targetState = d.tool, label = "toolOptions") { tool ->
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 when {
+                    tool == DrawingState.Tool.IMAGE -> {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                "Touch & drag to place. Pinch to scale & rotate.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            TextButton(onClick = onPickImage) {
+                                Text("Pick new")
+                            }
+                        }
+                    }
                     tool == DrawingState.Tool.EMOJI -> {
                         EmojiGrid(d)
-                        SizeRow(DrawingState.TEXT_SIZES, d.textSize, { d.textSize = it }) { i, _ ->
-                            Text("🙂", fontSize = (14 + i * 7).sp)
-                        }
+                        Text(
+                            "Touch & drag to place. Pinch to scale & rotate.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 4.dp),
+                        )
                     }
                     tool == DrawingState.Tool.TEXT -> {
                         ColorRow(d)
@@ -392,3 +448,33 @@ private fun TextEntryDialog(maxBytes: Int, onDone: (String) -> Unit, onDismiss: 
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
+
+private fun compressImage(context: Context, uri: Uri, maxBytes: Int): ByteArray? = runCatching {
+    val input = context.contentResolver.openInputStream(uri) ?: return null
+    val original = BitmapFactory.decodeStream(input) ?: return null
+    input.close()
+
+    val maxDim = 512
+    val scale = if (original.width > maxDim || original.height > maxDim) {
+        maxDim.toFloat() / maxOf(original.width, original.height)
+    } else 1f
+    val scaled = if (scale < 1f) {
+        Bitmap.createScaledBitmap(original, (original.width * scale).toInt(), (original.height * scale).toInt(), true)
+    } else original
+
+    var quality = 75
+    val stream = ByteArrayOutputStream()
+    while (quality >= 15) {
+        stream.reset()
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            scaled.compress(Bitmap.CompressFormat.WEBP_LOSSY, quality, stream)
+        } else {
+            scaled.compress(Bitmap.CompressFormat.JPEG, quality, stream)
+        }
+        if (stream.size() <= maxBytes) {
+            return stream.toByteArray()
+        }
+        quality -= 15
+    }
+    null
+}.getOrNull()

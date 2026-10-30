@@ -140,4 +140,74 @@ class DoodleCodecTest {
         assertEquals(0f, p[0], 0f)
         assertEquals(1f, p[1], 0f)
     }
+
+    @Test
+    fun imageMarkRoundTripsWithScaleAndRotation() {
+        val imgBytes = byteArrayOf(1, 2, 3, 4, 5, 6, 7, 8)
+        val d = Doodle(listOf(ImageMark(imgBytes, 0.3f, 0.7f, 1.5f, 45f)), 12345L)
+        val decoded = DoodleCodec.decode(DoodleCodec.encode(d))
+        assertEquals(1, decoded.images.size)
+        val img = decoded.images[0]
+        assertTrue(imgBytes.contentEquals(img.bytes))
+        assertEquals(0.3f, img.x, 1e-3f)
+        assertEquals(0.7f, img.y, 1e-3f)
+        assertEquals(1.5f, img.scale, 1e-3f)
+        assertEquals(45f, img.rotation, 0.1f)
+    }
+
+    @Test
+    fun textMarkRotationRoundTrips() {
+        val d = Doodle(listOf(TextMark("Rotated", 0.5f, 0.5f, 0, 0.05f, 90f)), 12345L)
+        val decoded = DoodleCodec.decode(DoodleCodec.encode(d))
+        val text = decoded.texts[0]
+        assertEquals("Rotated", text.text)
+        assertEquals(90f, text.rotation, 0.1f)
+    }
+
+    @Test
+    fun v2DoodleDecodesWithZeroRotation() {
+        val v2Bytes = ByteArrayOutputStream().also { b ->
+            DataOutputStream(b).use {
+                it.writeByte(2) // Version 2
+                it.writeLong(1000L)
+                it.writeShort(1) // 1 mark
+                it.writeByte(1) // TYPE_TEXT
+                it.writeInt(0xFF0000)
+                it.writeShort(32768) // size = 0.5
+                it.writeShort(16384) // x = 0.25
+                it.writeShort(49152) // y = 0.75
+                val textBytes = "Legacy".toByteArray(Charsets.UTF_8)
+                it.writeShort(textBytes.size)
+                it.write(textBytes)
+            }
+        }.toByteArray()
+
+        val decoded = DoodleCodec.decode(v2Bytes)
+        assertEquals(1000L, decoded.createdAtMillis)
+        assertEquals(1, decoded.texts.size)
+        val text = decoded.texts[0]
+        assertEquals("Legacy", text.text)
+        assertEquals(0f, text.rotation, 0.01f)
+    }
+
+    @Test
+    fun rejectsTooLargeImage() {
+        val huge = ImageMark(ByteArray(DoodleCodec.MAX_IMAGE_BYTES + 1), 0.5f, 0.5f, 1f, 0f)
+        assertThrows(IllegalArgumentException::class.java) { DoodleCodec.encode(Doodle(listOf(huge), 0)) }
+
+        val claimsTooBigImage = ByteArrayOutputStream().also { b ->
+            DataOutputStream(b).use {
+                it.writeByte(3)
+                it.writeLong(0)
+                it.writeShort(1)
+                it.writeByte(2) // TYPE_IMAGE
+                it.writeShort(0)
+                it.writeShort(0)
+                it.writeShort(0)
+                it.writeShort(0)
+                it.writeInt(100_000) // Claims 100KB image
+            }
+        }.toByteArray()
+        assertThrows(IOException::class.java) { DoodleCodec.decode(claimsTooBigImage) }
+    }
 }
