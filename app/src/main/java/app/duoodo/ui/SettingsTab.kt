@@ -104,7 +104,12 @@ fun SettingsTab(vm: MainViewModel) {
                 icon = Icons.Rounded.Widgets,
                 title = if (widgetPlaced) "Widget on home screen" else "Add widget",
                 subtitle = if (widgetPlaced) "Your partner's latest doodle is on your home screen"
-                else "See their latest doodle without opening the app",
+                else if (DuoodoWidget.canRequestPin(context)) "See their latest doodle without opening the app"
+                else "Touch & hold home screen → Widgets → Duoodo",
+                trailing = { if (DuoodoWidget.canRequestPin(context)) Chevron() },
+                onClick = if (DuoodoWidget.canRequestPin(context)) {
+                    { DuoodoWidget.requestPin(context, DuoodoWidget.Size.SQUARE_2X2) }
+                } else null,
             )
             if (DuoodoWidget.canRequestPin(context)) {
                 Column(Modifier.padding(start = 56.dp, end = 16.dp, bottom = 12.dp)) {

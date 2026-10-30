@@ -105,12 +105,10 @@ class DuoodoWidget : GlanceAppWidget() {
                     }
                     if (size.height < 90.dp) {
                         Row(
-                            modifier = GlanceModifier.fillMaxSize(),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            Image(ImageProvider(R.drawable.ic_widget_bird), null, GlanceModifier.size(24.dp))
-                            Spacer(GlanceModifier.size(8.dp))
+                            Image(ImageProvider(R.drawable.ic_widget_bird), null, GlanceModifier.size(24.dp).padding(end = 8.dp))
                             Text(
                                 "No doodle yet",
                                 style = TextStyle(
@@ -121,8 +119,7 @@ class DuoodoWidget : GlanceAppWidget() {
                         }
                     } else {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Image(ImageProvider(R.drawable.ic_widget_bird), null, GlanceModifier.size(36.dp))
-                            Spacer(GlanceModifier.size(4.dp))
+                            Image(ImageProvider(R.drawable.ic_widget_bird), null, GlanceModifier.size(36.dp).padding(bottom = 4.dp))
                             Text(
                                 "No doodle yet",
                                 style = TextStyle(
@@ -136,7 +133,7 @@ class DuoodoWidget : GlanceAppWidget() {
                     Image(
                         provider = ImageProvider(bitmap),
                         contentDescription = "Latest doodle from your partner",
-                        modifier = if (inset > 0.dp) GlanceModifier.cornerRadius(16.dp).fillMaxSize() else GlanceModifier.fillMaxSize(),
+                        modifier = if (inset > 0.dp) GlanceModifier.cornerRadius(16.dp) else GlanceModifier,
                     )
                 }
             }
@@ -164,8 +161,12 @@ class DuoodoWidget : GlanceAppWidget() {
 
         /** Asks the launcher to place the widget of the chosen [size]; the user confirms in a system dialog. */
         fun requestPin(context: Context, size: Size = Size.SQUARE_2X2) {
-            AppWidgetManager.getInstance(context)
-                .requestPinAppWidget(ComponentName(context, size.receiverClass), null, null)
+            val awm = AppWidgetManager.getInstance(context)
+            if (awm.isRequestPinAppWidgetSupported) {
+                runCatching {
+                    awm.requestPinAppWidget(ComponentName(context, size.receiverClass), null, null)
+                }
+            }
         }
 
         /** Redraws every placed widget from the latest stored doodle. */
@@ -173,8 +174,20 @@ class DuoodoWidget : GlanceAppWidget() {
             val widget = DuoodoWidget()
             val stamp = System.nanoTime()
             val manager = GlanceAppWidgetManager(context)
-            val glanceIds = runCatching { manager.getGlanceIds(DuoodoWidget::class.java) }.getOrDefault(emptyList())
-            glanceIds.forEach { id ->
+            val awm = AppWidgetManager.getInstance(context)
+            val allIds = mutableSetOf<GlanceId>()
+
+            runCatching { allIds.addAll(manager.getGlanceIds(DuoodoWidget::class.java)) }
+            ALL_RECEIVERS.forEach { receiverClass ->
+                runCatching {
+                    val appWidgetIds = awm.getAppWidgetIds(ComponentName(context, receiverClass))
+                    appWidgetIds.forEach { id ->
+                        allIds.add(manager.getGlanceIdBy(id))
+                    }
+                }
+            }
+
+            allIds.forEach { id ->
                 runCatching {
                     updateAppWidgetState(context, id) { it[VERSION] = stamp }
                     widget.update(context, id)

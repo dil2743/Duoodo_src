@@ -1,0 +1,3 @@
+- Fix widget receiver intent filter action so home screen launchers detect and place widgets
+- Fix in-app widget addition with fallback instructions for custom launchers
+- Update all placed multi-size widgets (2x2, 2x4, 2x3, 1x4) across all receivers reliably
