@@ -1,0 +1,5 @@
+- Multi-size home screen widgets: 2x2 Square, 2x4 Wide, 2x3 Medium, and 1x4 Compact Banner with quick-add options
+- Live widget transparency slider: customize background opacity smoothly from 0% (clear) to 100% (solid)
+- Resizable emojis: touch, drag, and pinch with two fingers to dynamically scale and rotate emojis
+- Photo stickers: add still images from your gallery with zero extra permissions, resize, rotate, and draw over them
+- Security hardening: daily rotating slot tags prevent message correlation over time, hostile relay flooding protections, and mandatory 6-emoji safety verification
