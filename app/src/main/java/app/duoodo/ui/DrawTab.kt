@@ -55,6 +55,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
@@ -151,13 +152,13 @@ fun DrawContent(
         // Scrolls only on short screens; on most phones everything fits.
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(2.dp))
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .shadow(6.dp, MaterialTheme.shapes.large, clip = false)
+                    .shadow(4.dp, MaterialTheme.shapes.large, clip = false)
                     .clip(MaterialTheme.shapes.large)
                     .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.large),
             ) {
@@ -211,7 +212,10 @@ private fun iconFor(tool: DrawingState.Tool): ImageVector? = when (tool) {
 
 @Composable
 private fun ToolStrip(d: DrawingState, onPickImage: () -> Unit) {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 2.dp)) {
+    LazyRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(vertical = 2.dp),
+    ) {
         items(DrawingState.Tool.entries) { tool ->
             val selected = d.tool == tool
             val bg by animateColorAsState(
@@ -219,9 +223,10 @@ private fun ToolStrip(d: DrawingState, onPickImage: () -> Unit) {
                 label = "toolBg",
             )
             val fg = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-            Column(
+            Box(
                 Modifier
-                    .clip(MaterialTheme.shapes.medium)
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(14.dp))
                     .background(bg)
                     .clickable {
                         if (tool == DrawingState.Tool.IMAGE) {
@@ -229,17 +234,14 @@ private fun ToolStrip(d: DrawingState, onPickImage: () -> Unit) {
                         } else {
                             d.tool = tool
                         }
-                    }
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
-                    .widthIn(min = 44.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
+                    },
+                contentAlignment = Alignment.Center,
             ) {
                 when {
                     tool == DrawingState.Tool.RAINBOW -> RainbowGlyph()
                     tool == DrawingState.Tool.ERASER -> EraserGlyph(fg)
-                    else -> Icon(iconFor(tool)!!, null, tint = fg, modifier = Modifier.size(22.dp))
+                    else -> Icon(iconFor(tool)!!, tool.label, tint = fg, modifier = Modifier.size(22.dp))
                 }
-                Text(tool.label, style = MaterialTheme.typography.labelSmall, color = fg)
             }
         }
     }
@@ -412,19 +414,19 @@ private fun ActionBar(
 ) {
     Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp, modifier = Modifier.fillMaxWidth()) {
         Row(
-            Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             val colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
-            FilledTonalIconButton(onClick = d::undo, enabled = d.canUndo, colors = colors) {
-                Icon(Icons.AutoMirrored.Rounded.Undo, "Undo")
+            FilledTonalIconButton(onClick = d::undo, enabled = d.canUndo, colors = colors, modifier = Modifier.size(42.dp)) {
+                Icon(Icons.AutoMirrored.Rounded.Undo, "Undo", Modifier.size(20.dp))
             }
-            FilledTonalIconButton(onClick = d::redo, enabled = d.canRedo, colors = colors) {
-                Icon(Icons.AutoMirrored.Rounded.Redo, "Redo")
+            FilledTonalIconButton(onClick = d::redo, enabled = d.canRedo, colors = colors, modifier = Modifier.size(42.dp)) {
+                Icon(Icons.AutoMirrored.Rounded.Redo, "Redo", Modifier.size(20.dp))
             }
-            FilledTonalIconButton(onClick = onClear, enabled = d.canUndo, colors = colors) {
-                Icon(Icons.Rounded.DeleteOutline, "Clear")
+            FilledTonalIconButton(onClick = onClear, enabled = d.canUndo, colors = colors, modifier = Modifier.size(42.dp)) {
+                Icon(Icons.Rounded.DeleteOutline, "Clear", Modifier.size(20.dp))
             }
             Spacer(Modifier.weight(1f))
             if (partnerPeeked) {
@@ -454,20 +456,26 @@ private fun ActionBar(
                     modifier = Modifier.padding(end = 4.dp),
                 )
             }
-            Button(
+            FilledIconButton(
                 onClick = onSend,
                 enabled = d.canUndo && !busy,
-                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
-                colors = ButtonDefaults.buttonColors(),
+                modifier = Modifier.size(46.dp),
+                colors = IconButtonDefaults.filledIconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
+                ),
+                shape = CircleShape,
             ) {
                 if (busy) {
-                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-                    Spacer(Modifier.size(8.dp))
-                    Text("Sending")
+                    CircularProgressIndicator(
+                        Modifier.size(20.dp),
+                        strokeWidth = 2.5.dp,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                    )
                 } else {
-                    Icon(Icons.AutoMirrored.Rounded.Send, null, Modifier.size(18.dp))
-                    Spacer(Modifier.size(8.dp))
-                    Text("Send")
+                    Icon(Icons.AutoMirrored.Rounded.Send, "Send", Modifier.size(22.dp))
                 }
             }
         }

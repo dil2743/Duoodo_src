@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -102,7 +103,11 @@ private fun PairedApp(vm: MainViewModel, snackbar: SnackbarHostState) {
             )
         },
         bottomBar = {
-            NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+            NavigationBar(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                modifier = Modifier.height(58.dp),
+                tonalElevation = 0.dp,
+            ) {
                 Tab.entries.forEach { t ->
                     NavigationBarItem(
                         selected = tab == t.ordinal,
@@ -114,12 +119,14 @@ private fun PairedApp(vm: MainViewModel, snackbar: SnackbarHostState) {
                                 Tab.SETTINGS -> Icons.Rounded.Settings
                             }
                             if (t == Tab.INBOX && vm.unseen) {
-                                BadgedBox(badge = { Badge() }) { Icon(icon, null) }
+                                BadgedBox(badge = { Badge(containerColor = MaterialTheme.colorScheme.error) }) {
+                                    Icon(icon, t.label, modifier = Modifier.size(24.dp))
+                                }
                             } else {
-                                Icon(icon, null)
+                                Icon(icon, t.label, modifier = Modifier.size(24.dp))
                             }
                         },
-                        label = { Text(t.label) },
+                        alwaysShowLabel = false,
                     )
                 }
             }

@@ -1,0 +1,4 @@
+- Minimalist icon-only navigation bar: removed text labels from Draw, Inbox, and Settings tabs for a clean, spacious interface
+- Sleek tool strip: removed tool text labels and upgraded tools to 44dp tactile squircle icon buttons
+- Icon-only send button: replaced the wide "Send" text button with a circular action button and tightened bottom margins in the Draw tab
+- Enhanced visual polish, balanced canvas spacing, and uncluttered layout throughout
