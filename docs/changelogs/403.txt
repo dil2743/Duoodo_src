@@ -1,0 +1,4 @@
+- Fix inbox unread badge persistence so the dot does not reappear on app restart once viewed
+- Read receipts: when your partner opens the inbox to view your doodle, a playful "Peeked! 🙈" indicator is displayed
+- Privacy toggle for read receipts in Settings (enabled by default, can be toggled off anytime)
+- Fix image selection bug by downscaling dynamically and storing decoded bitmaps directly on marks, ensuring new image selections always replace the previous one

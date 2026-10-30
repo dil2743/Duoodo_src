@@ -27,12 +27,13 @@ object Sync {
         check(context)
     }
 
-    /** Fetches and stores the partner's newest doodle, after advancing any pairing in progress. */
+    /** Fetches and stores the partner's newest doodle and receipts, after advancing any pairing in progress. */
     suspend fun check(context: Context) {
         advancePairing(PairingRepository(context))
         val repo = PairingRepository(context)
         if (repo.partnerLeft || !repo.safetyVerified) return
-        transport(repo)?.fetch()?.let { Inbox.handle(context, it) }
+        val transport = transport(repo) ?: return
+        transport.fetchAll().forEach { Inbox.handle(context, it) }
     }
 
     suspend fun advancePairing(repo: PairingRepository) = Handshake(relays).advance(repo)
@@ -53,6 +54,14 @@ object Sync {
                 throw PartnerLeftException()
             }
         }
+    }
+
+    /** Tells the partner their doodle has been viewed. */
+    suspend fun sendReceipt(context: Context, doodleTimestamp: Long) {
+        if (!app.duoodo.data.Settings(context).readReceipts) return
+        val repo = PairingRepository(context)
+        if (repo.partnerLeft || !repo.safetyVerified) return
+        transport(repo)?.sendReceipt(doodleTimestamp)
     }
 
     /** Unpairs locally and tells the partner. Best effort: if offline, the partner learns on a later send attempt. */

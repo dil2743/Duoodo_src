@@ -190,7 +190,19 @@ class SimulatedEndToEndTest {
         assertEquals(0xFF00FF00.toInt(), receivedStroke.color)
 
         // =========================================================================
-        // STEP 4: Multi-Size Widgets & Custom Opacity Settings Verification
+        // STEP 4: Read Receipt & "Seen Peek" Transmission
+        // =========================================================================
+        // Bob opens inbox and sends a read receipt for Alice's doodle
+        bobTransport.sendReceipt(receivedDoodle.createdAtMillis)
+
+        // Alice receives the read receipt
+        val aliceItems = aliceTransport.fetchAll()
+        val receipt = aliceItems.filterIsInstance<NostrTransport.Incoming.Receipt>().firstOrNull()
+        assertNotNull("Alice received Bob's read receipt", receipt)
+        assertEquals("Receipt references Alice's sent doodle timestamp", doodleToSend.createdAtMillis, receipt!!.doodleTimestamp)
+
+        // =========================================================================
+        // STEP 5: Multi-Size Widgets & Custom Opacity Settings Verification
         // =========================================================================
         val sizes = DuoodoWidget.Size.entries
         assertEquals("4 widget sizes available", 4, sizes.size)

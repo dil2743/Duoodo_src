@@ -36,12 +36,30 @@ class NostrTransport(
     /** What the partner's slot currently holds. */
     sealed interface Incoming {
         data class Note(val doodle: Doodle) : Incoming
+        data class Receipt(val doodleTimestamp: Long) : Incoming
         /** The partner unpaired; the pairing is dead and nothing more should be sent. */
         data object Unpaired : Incoming
     }
 
     /** @throws IOException if no relay accepted the doodle. */
     suspend fun send(doodle: Doodle) = publishPayload(DoodleCodec.encode(doodle))
+
+    /** Sends an authenticated read receipt confirming we viewed the partner's doodle. */
+    suspend fun sendReceipt(doodleCreatedAtMillis: Long) {
+        val nowSec = clock() / 1000
+        val day = nowSec / DAY_SECONDS
+        val dir = pairing.outgoing
+        val payload = RECEIPT_HEADER + java.nio.ByteBuffer.allocate(8).putLong(doodleCreatedAtMillis).array()
+        val sealed = Envelope.seal(pairing.messageKey(dir), payload, aad(dir))
+        val event = NostrEvent.sign(
+            pairing.nostrPrivateKey(dir, day),
+            nowSec,
+            NostrEvent.KIND_APP_DATA,
+            listOf(listOf("d", pairing.receiptTag(dir, day)), listOf("expiration", (nowSec + EXPIRY_SECONDS).toString())),
+            sealed.toBase64(),
+        )
+        runCatching { relays.publish(event) }
+    }
 
     /**
      * Tells the partner we unpaired. It replaces our last doodle in the same slot, so relays see
@@ -69,31 +87,47 @@ class NostrTransport(
         if (previousDay != null && previousDay != day) deleteSlot(previousDay, nowSec)
     }
 
+    /** Returns all valid incoming items (newest doodle and/or newest read receipt). */
+    suspend fun fetchAll(): List<Incoming> {
+        val items = relays.query(incomingFilter()).mapNotNull(::read)
+        if (items.any { it is Incoming.Unpaired }) return listOf(Incoming.Unpaired)
+        val result = mutableListOf<Incoming>()
+        items.filterIsInstance<Incoming.Note>().maxByOrNull { it.doodle.createdAtMillis }?.let { result.add(it) }
+        items.filterIsInstance<Incoming.Receipt>().maxByOrNull { it.doodleTimestamp }?.let { result.add(it) }
+        return result
+    }
+
     /** Returns the newest doodle from the partner on any relay, or null if none can be read. */
-    suspend fun fetchLatest(): Doodle? = (fetch() as? Incoming.Note)?.doodle
+    suspend fun fetchLatest(): Doodle? = (fetchAll().filterIsInstance<Incoming.Note>().firstOrNull())?.doodle
 
     /**
      * Reads the partner's slot from all relays. A goodbye wins over any doodle: once the partner has
      * unpaired, a stale relay still holding an older doodle must not hide that.
      */
-    suspend fun fetch(): Incoming? {
-        val items = relays.query(incomingFilter()).mapNotNull(::read)
-        if (items.any { it is Incoming.Unpaired }) return Incoming.Unpaired
-        // The timestamp inside the ciphertext is authenticated; the relay's created_at is not.
-        return items.filterIsInstance<Incoming.Note>().maxByOrNull { it.doodle.createdAtMillis }
-    }
+    suspend fun fetch(): Incoming? = fetchAll().firstOrNull()
 
-    /** Relay filter matching the partner's doodle events (also used for live subscriptions). */
+    /** Relay filter matching the partner's doodle events and read receipts. */
     fun incomingFilter(): JsonObject =
-        RelayPool.filter(listOf(NostrEvent.KIND_APP_DATA), authors = incomingAuthors(), dTags = incomingTags())
+        RelayPool.filter(listOf(NostrEvent.KIND_APP_DATA), authors = incomingAuthors(), dTags = incomingTags() + incomingReceiptTags())
 
     /** Decrypts an event from the partner's slot; null if it isn't one of theirs. */
     fun read(event: NostrEvent): Incoming? {
-        if (event.kind != NostrEvent.KIND_APP_DATA || event.tag("d") !in incomingTags()) return null
+        if (event.kind != NostrEvent.KIND_APP_DATA) return null
+        val tag = event.tag("d") ?: return null
+        val isDoodle = tag in incomingTags()
+        val isReceipt = tag in incomingReceiptTags()
+        if (!isDoodle && !isReceipt) return null
         if (event.pubkey !in incomingAuthors()) return null
         val dir = pairing.incoming
         val payload = runCatching { Envelope.open(pairing.messageKey(dir), event.content.fromBase64(), aad(dir)) }.getOrNull()
             ?: return null
+        if (isReceipt) {
+            if (payload.size >= 13 && payload.take(5).toByteArray().contentEquals(RECEIPT_HEADER)) {
+                val doodleTs = java.nio.ByteBuffer.wrap(payload, 5, 8).long
+                return Incoming.Receipt(doodleTs)
+            }
+            return null
+        }
         if (payload.contentEquals(GOODBYE)) return Incoming.Unpaired
         return runCatching { Incoming.Note(DoodleCodec.decode(payload)) }.getOrNull()
     }
@@ -119,6 +153,11 @@ class NostrTransport(
         return incomingDays().map { pairing.slotTag(dir, it) }
     }
 
+    fun incomingReceiptTags(): List<String> {
+        val dir = pairing.incoming
+        return incomingDays().map { pairing.receiptTag(dir, it) }
+    }
+
     private suspend fun deleteSlot(day: Long, nowSec: Long) {
         val key = pairing.nostrPrivateKey(pairing.outgoing, day)
         val pub = pairing.nostrPublicKey(pairing.outgoing, day).toHex()
@@ -138,5 +177,6 @@ class NostrTransport(
         private const val LOOKBACK_DAYS = 7L
         /** Can never be a valid doodle: doodles start with their format version (1, 2, …). */
         private val GOODBYE = byteArrayOf(0, 'b'.code.toByte(), 'y'.code.toByte(), 'e'.code.toByte())
+        private val RECEIPT_HEADER = byteArrayOf(0, 'p'.code.toByte(), 'e'.code.toByte(), 'e'.code.toByte(), 'k'.code.toByte())
     }
 }

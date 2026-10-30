@@ -14,9 +14,13 @@ import kotlinx.coroutines.sync.withLock
 object Inbox {
     private val mutex = Mutex()
     private val _updates = MutableStateFlow(0L)
+    private val _receipts = MutableStateFlow(0L)
 
     /** Bumps whenever a newer doodle is stored, so an open app can redraw immediately. */
     val updates: StateFlow<Long> = _updates
+
+    /** Bumps whenever the partner sends a read receipt confirming they viewed our doodle. */
+    val receipts: StateFlow<Long> = _receipts
 
     suspend fun deliver(context: Context, doodle: Doodle) {
         // Several relays push the same doodle at once; serialize so it's stored and drawn once.
@@ -29,6 +33,14 @@ object Inbox {
             _updates.value = doodle.createdAtMillis
         }
         DuoodoWidget.refreshAll(context)
+    }
+
+    suspend fun deliverReceipt(context: Context, doodleTimestamp: Long) {
+        mutex.withLock {
+            val store = LatestDoodleStore(context)
+            store.markReadByPartner(doodleTimestamp)
+            _receipts.value = doodleTimestamp
+        }
     }
 
     /**
@@ -61,6 +73,7 @@ object Inbox {
     /** Routes whatever the partner's slot holds. */
     suspend fun handle(context: Context, incoming: NostrTransport.Incoming) = when (incoming) {
         is NostrTransport.Incoming.Note -> deliver(context, incoming.doodle)
+        is NostrTransport.Incoming.Receipt -> deliverReceipt(context, incoming.doodleTimestamp)
         NostrTransport.Incoming.Unpaired -> partnerLeft(context)
     }
 }

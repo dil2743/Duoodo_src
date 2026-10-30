@@ -32,11 +32,17 @@ class Settings(context: Context) {
         get() = prefs.getInt(WIDGET_COLOR, 0xFFFFFFFF.toInt())
         set(value) = prefs.edit().putInt(WIDGET_COLOR, value).apply()
 
+    /** Whether to send read receipts when viewing the partner's doodle. */
+    var readReceipts: Boolean
+        get() = prefs.getBoolean(READ_RECEIPTS, true)
+        set(value) = prefs.edit().putBoolean(READ_RECEIPTS, value).apply()
+
     companion object {
         private const val INSTANT = "instant_delivery"
         private const val WIDGET_STYLE = "widget_style"
         private const val WIDGET_OPACITY = "widget_opacity"
         private const val WIDGET_COLOR = "widget_color"
+        private const val READ_RECEIPTS = "read_receipts"
 
         val FROSTED_PALETTE = listOf(
             0xFFFFFFFF.toInt(), // Pure White

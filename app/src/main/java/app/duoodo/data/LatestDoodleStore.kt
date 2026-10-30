@@ -26,6 +26,8 @@ class LatestDoodleStore(context: Context) {
     }
 
     private val clearedFile = File(context.noBackupFilesDir, "cleared_up_to")
+    private val seenFile = File(context.noBackupFilesDir, "seen_up_to")
+    private val partnerReadFile = File(context.noBackupFilesDir, "partner_read_up_to")
 
     /** Timestamp of the newest doodle the user cleared; anything up to it stays hidden. */
     fun clearedUpTo(): Long = runCatching { clearedFile.readText().toLong() }.getOrDefault(0L)
@@ -34,10 +36,38 @@ class LatestDoodleStore(context: Context) {
         clearedFile.writeText(createdAtMillis.toString())
     }
 
-    /** Forgets everything, including what was cleared (used when unpairing). */
+    /** Timestamp of the newest doodle the user actually viewed in the inbox. */
+    fun seenUpTo(): Long = runCatching { seenFile.readText().toLong() }.getOrDefault(0L)
+
+    fun markSeen(createdAtMillis: Long) {
+        val current = seenUpTo()
+        if (createdAtMillis > current) {
+            seenFile.writeText(createdAtMillis.toString())
+        }
+    }
+
+    /** Timestamp of our latest sent doodle that the partner has read. */
+    fun partnerReadUpTo(): Long = runCatching { partnerReadFile.readText().toLong() }.getOrDefault(0L)
+
+    fun markReadByPartner(doodleTimestamp: Long) {
+        val current = partnerReadUpTo()
+        if (doodleTimestamp > current) {
+            partnerReadFile.writeText(doodleTimestamp.toString())
+        }
+    }
+
+    /** True if there is an active doodle newer than both the last seen and last cleared timestamps. */
+    fun isUnseen(): Boolean {
+        val doodle = read() ?: return false
+        return doodle.createdAtMillis > seenUpTo() && doodle.createdAtMillis > clearedUpTo()
+    }
+
+    /** Forgets everything, including what was cleared, seen, and read (used when unpairing). */
     fun reset() {
         clear()
         clearedFile.delete()
+        seenFile.delete()
+        partnerReadFile.delete()
     }
 
     fun overwrite(doodle: Doodle) {

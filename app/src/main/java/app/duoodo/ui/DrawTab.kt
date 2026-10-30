@@ -94,22 +94,35 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
-fun DrawTab(vm: MainViewModel) = DrawContent(vm.drawing, vm.busy, vm::send)
+fun DrawTab(vm: MainViewModel) = DrawContent(vm.drawing, vm.busy, vm::send, vm.status, vm.partnerPeeked)
 
 /** The draw screen, independent of the ViewModel so it can be previewed and snapshot-tested. */
 @Composable
-fun DrawContent(d: DrawingState, busy: Boolean, onSend: () -> Unit) {
+fun DrawContent(
+    d: DrawingState,
+    busy: Boolean,
+    onSend: () -> Unit,
+    status: String? = null,
+    partnerPeeked: Boolean = false,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) {
             scope.launch {
+                val budget = d.imageBudget
+                if (budget < 1024) {
+                    android.widget.Toast.makeText(context, "Doodle full: no space for more images", android.widget.Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
                 val bytes = withContext(Dispatchers.IO) {
-                    compressImage(context, uri, d.imageBudget)
+                    compressImage(context, uri, budget)
                 }
                 if (bytes != null) {
                     d.imageBytes = bytes
                     d.tool = DrawingState.Tool.IMAGE
+                } else {
+                    android.widget.Toast.makeText(context, "Could not compress image to fit budget", android.widget.Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -170,7 +183,7 @@ fun DrawContent(d: DrawingState, busy: Boolean, onSend: () -> Unit) {
             ToolStrip(d, onPickImage = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) })
             ToolOptions(d, onPickImage = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) })
         }
-        ActionBar(d, busy, onSend, onClear = { confirmClear = true })
+        ActionBar(d, busy, onSend, onClear = { confirmClear = true }, status = status, partnerPeeked = partnerPeeked)
     }
 }
 
@@ -389,7 +402,14 @@ private fun EmojiGrid(d: DrawingState) {
 }
 
 @Composable
-private fun ActionBar(d: DrawingState, busy: Boolean, onSend: () -> Unit, onClear: () -> Unit) {
+private fun ActionBar(
+    d: DrawingState,
+    busy: Boolean,
+    onSend: () -> Unit,
+    onClear: () -> Unit,
+    status: String? = null,
+    partnerPeeked: Boolean = false,
+) {
     Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp, modifier = Modifier.fillMaxWidth()) {
         Row(
             Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
@@ -407,6 +427,33 @@ private fun ActionBar(d: DrawingState, busy: Boolean, onSend: () -> Unit, onClea
                 Icon(Icons.Rounded.DeleteOutline, "Clear")
             }
             Spacer(Modifier.weight(1f))
+            if (partnerPeeked) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    shape = MaterialTheme.shapes.small,
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text("🙈", fontSize = 14.sp)
+                        Text(
+                            "Peeked!",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                    }
+                }
+            } else if (status != null) {
+                Text(
+                    status,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(end = 4.dp),
+                )
+            }
             Button(
                 onClick = onSend,
                 enabled = d.canUndo && !busy,
@@ -450,31 +497,30 @@ private fun TextEntryDialog(maxBytes: Int, onDone: (String) -> Unit, onDismiss: 
 }
 
 private fun compressImage(context: Context, uri: Uri, maxBytes: Int): ByteArray? = runCatching {
+    if (maxBytes <= 512) return null
     val input = context.contentResolver.openInputStream(uri) ?: return null
     val original = BitmapFactory.decodeStream(input) ?: return null
     input.close()
 
-    val maxDim = 512
-    val scale = if (original.width > maxDim || original.height > maxDim) {
-        maxDim.toFloat() / maxOf(original.width, original.height)
-    } else 1f
-    val scaled = if (scale < 1f) {
-        Bitmap.createScaledBitmap(original, (original.width * scale).toInt(), (original.height * scale).toInt(), true)
-    } else original
+    for (maxDim in intArrayOf(512, 384, 256, 192, 128)) {
+        val scale = if (original.width > maxDim || original.height > maxDim) {
+            maxDim.toFloat() / maxOf(original.width, original.height)
+        } else 1f
+        val scaled = if (scale < 1f) {
+            Bitmap.createScaledBitmap(original, (original.width * scale).toInt(), (original.height * scale).toInt(), true)
+        } else original
 
-    var quality = 75
-    val stream = ByteArrayOutputStream()
-    while (quality >= 15) {
-        stream.reset()
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-            scaled.compress(Bitmap.CompressFormat.WEBP_LOSSY, quality, stream)
-        } else {
-            scaled.compress(Bitmap.CompressFormat.JPEG, quality, stream)
+        for (quality in intArrayOf(75, 55, 35, 20)) {
+            val stream = ByteArrayOutputStream()
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                scaled.compress(Bitmap.CompressFormat.WEBP_LOSSY, quality, stream)
+            } else {
+                scaled.compress(Bitmap.CompressFormat.JPEG, quality, stream)
+            }
+            if (stream.size() <= maxBytes) {
+                return stream.toByteArray()
+            }
         }
-        if (stream.size() <= maxBytes) {
-            return stream.toByteArray()
-        }
-        quality -= 15
     }
     null
 }.getOrNull()

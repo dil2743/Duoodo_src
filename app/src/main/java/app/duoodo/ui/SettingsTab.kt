@@ -28,6 +28,7 @@ import androidx.compose.material.icons.rounded.BatteryChargingFull
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.LinkOff
 import androidx.compose.material.icons.rounded.VerifiedUser
+import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilledTonalButton
@@ -210,6 +211,17 @@ fun SettingsTab(vm: MainViewModel) {
                     }
                 }
             }
+        }
+
+        SectionCard("Privacy") {
+            SettingRow(
+                icon = Icons.Rounded.Visibility,
+                title = "Read receipts",
+                subtitle = "Let your partner know when you've taken a peek at their doodle",
+                trailing = {
+                    Switch(checked = vm.readReceipts, onCheckedChange = vm::changeReadReceipts)
+                },
+            )
         }
 
         vm.safetyEmojis?.let { emojis ->

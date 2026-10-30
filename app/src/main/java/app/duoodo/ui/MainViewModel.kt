@@ -51,7 +51,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     var refreshing by mutableStateOf(false)
         private set
     /** A doodle arrived that the user hasn't looked at yet (drives the Inbox badge). */
-    var unseen by mutableStateOf(false)
+    var unseen by mutableStateOf(store.isUnseen())
+        private set
+    /** True when the partner has viewed our latest sent doodle. */
+    var partnerPeeked by mutableStateOf(false)
         private set
     var status by mutableStateOf<String?>(null)
         private set
@@ -60,18 +63,31 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     var instantDelivery by mutableStateOf(Settings(app).instantDelivery)
         private set
+    var readReceipts by mutableStateOf(Settings(app).readReceipts)
+        private set
 
     init {
         refreshPairState()
+        updatePartnerPeeked()
         // Redraw as soon as the live connection (or any check) stores a newer doodle.
         viewModelScope.launch {
-            Inbox.updates.collect { version ->
-                val before = received?.createdAtMillis
+            Inbox.updates.collect {
                 received = withContext(Dispatchers.IO) { store.read() }
-                if (version > 0 && received != null && received?.createdAtMillis != before) unseen = true
+                unseen = withContext(Dispatchers.IO) { store.isUnseen() }
                 if (repo.partnerLeft && pairState != PairState.PartnerLeft) refreshPairState()
             }
         }
+        viewModelScope.launch {
+            Inbox.receipts.collect {
+                updatePartnerPeeked()
+            }
+        }
+    }
+
+    private fun updatePartnerPeeked() {
+        val lastSent = repo.lastSentTimestamp
+        val readUpTo = store.partnerReadUpTo()
+        partnerPeeked = lastSent != null && readUpTo >= lastSent
     }
 
     var widgetStyle by mutableStateOf(Settings(app).widgetStyle)
@@ -121,6 +137,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         Settings(getApplication()).instantDelivery = enabled
         instantDelivery = enabled
         LiveService.sync(getApplication())
+    }
+
+    fun changeReadReceipts(enabled: Boolean) {
+        Settings(getApplication()).readReceipts = enabled
+        readReceipts = enabled
     }
 
     private fun refreshPairState() {
@@ -201,6 +222,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun unpair() {
         drawing.clear()
         received = null
+        unseen = false
+        partnerPeeked = false
         viewModelScope.launch {
             withContext(Dispatchers.IO) { Sync.unpair(getApplication()) }
             refreshPairState()
@@ -217,6 +240,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             withContext(Dispatchers.IO) { runCatching { Sync.check(getApplication()) } }
             if (pairState !is PairState.Paired) refreshPairState()
             received = withContext(Dispatchers.IO) { store.read() }
+            unseen = withContext(Dispatchers.IO) { store.isUnseen() }
+            updatePartnerPeeked()
         }
     }
 
@@ -228,6 +253,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             busy = true
             status = try {
                 withContext(Dispatchers.IO) { Sync.send(getApplication(), doodle) }
+                repo.lastSentTimestamp = doodle.createdAtMillis
+                partnerPeeked = false
                 drawing.clear()
                 "Sent ✓"
             } catch (e: PartnerLeftException) {
@@ -257,11 +284,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             withContext(Dispatchers.IO) { Inbox.clearReceived(getApplication()) }
             received = null
+            unseen = false
         }
     }
 
     fun markSeen() {
-        unseen = false
+        val doodle = received ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            store.markSeen(doodle.createdAtMillis)
+            withContext(Dispatchers.Main) {
+                unseen = false
+            }
+            if (Settings(getApplication()).readReceipts) {
+                runCatching {
+                    Sync.sendReceipt(getApplication(), doodle.createdAtMillis)
+                }
+            }
+        }
     }
 
     fun refresh() {

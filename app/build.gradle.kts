@@ -32,8 +32,8 @@ android {
         minSdk = 26
         targetSdk = 35
         // versionCode = major * 10000 + minor * 100 + patch; release tags must match versionName.
-        versionCode = 402
-        versionName = "0.4.2"
+        versionCode = 403
+        versionName = "0.4.3"
     }
 
     signingConfigs {

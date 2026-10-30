@@ -35,6 +35,8 @@ data class TextMark(val text: String, val x: Float, val y: Float, val color: Int
  * @param rotation degrees of clockwise rotation around the center
  */
 class ImageMark(val bytes: ByteArray, val x: Float, val y: Float, val scale: Float, val rotation: Float = 0f) : Mark {
+    @Transient var cachedBitmap: android.graphics.Bitmap? = null
+
     override fun equals(other: Any?): Boolean =
         other is ImageMark && x == other.x && y == other.y && scale == other.scale && rotation == other.rotation && bytes.contentEquals(other.bytes)
 

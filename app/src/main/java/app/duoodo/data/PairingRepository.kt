@@ -45,9 +45,14 @@ class PairingRepository(context: Context) : Handshake.State {
         get() = secrets.get(SAFETY_VERIFIED)?.firstOrNull() == 1.toByte()
         set(value) = secrets.put(SAFETY_VERIFIED, if (value) byteArrayOf(1) else null)
 
+    /** Timestamp of our latest sent doodle, for matching with read receipts. */
+    var lastSentTimestamp: Long?
+        get() = secrets.get(LAST_SENT_TIMESTAMP)?.let { ByteBuffer.wrap(it).long }
+        set(value) = secrets.put(LAST_SENT_TIMESTAMP, value?.let { ByteBuffer.allocate(8).putLong(it).array() })
+
     /** Forget the partner and everything received from them. */
     fun unpair() {
-        listOf(PAIRING, PENDING, JOINING, JOINING_SINCE, LAST_SENT_DAY, PARTNER_LEFT, SAFETY_VERIFIED).forEach { secrets.put(it, null) }
+        listOf(PAIRING, PENDING, JOINING, JOINING_SINCE, LAST_SENT_DAY, PARTNER_LEFT, SAFETY_VERIFIED, LAST_SENT_TIMESTAMP).forEach { secrets.put(it, null) }
         latest.reset()
     }
 
@@ -59,5 +64,6 @@ class PairingRepository(context: Context) : Handshake.State {
         const val LAST_SENT_DAY = "last_sent_day"
         const val PARTNER_LEFT = "partner_left"
         const val SAFETY_VERIFIED = "safety_verified"
+        const val LAST_SENT_TIMESTAMP = "last_sent_timestamp"
     }
 }

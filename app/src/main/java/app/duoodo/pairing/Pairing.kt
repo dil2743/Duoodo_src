@@ -38,6 +38,10 @@ class Pairing(val root: ByteArray, val isInitiator: Boolean) {
     fun slotTag(dir: Direction, day: Long): String =
         Crypto.hkdf(root, EMPTY, "duoodo/v1/slot/${dir.label}/$day", 16).toHex()
 
+    /** The "d" tag of our read receipt replaceable event for a given day and direction. */
+    fun receiptTag(dir: Direction, day: Long): String =
+        Crypto.hkdf(root, EMPTY, "duoodo/v1/receipt/${dir.label}/$day", 16).toHex()
+
     /** The inviting phone confirms the pairing under this tag, encrypted with [confirmKey]. */
     val confirmTag: String get() = Crypto.hkdf(root, EMPTY, "duoodo/v1/confirm/tag", 16).toHex()
     val confirmKey: ByteArray get() = Crypto.hkdf(root, EMPTY, "duoodo/v1/confirm/key")

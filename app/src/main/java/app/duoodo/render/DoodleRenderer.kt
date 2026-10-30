@@ -96,15 +96,12 @@ object DoodleRenderer {
         }
     }
 
-    private val bitmapCache = android.util.LruCache<java.nio.ByteBuffer, Bitmap>(10)
-
     private fun drawImage(canvas: Canvas, mark: ImageMark, side: Float) {
         if (mark.bytes.isEmpty() || side <= 0f) return
-        val key = java.nio.ByteBuffer.wrap(mark.bytes)
-        var bmp = bitmapCache.get(key)
+        var bmp = mark.cachedBitmap
         if (bmp == null) {
             bmp = android.graphics.BitmapFactory.decodeByteArray(mark.bytes, 0, mark.bytes.size) ?: return
-            bitmapCache.put(key, bmp)
+            mark.cachedBitmap = bmp
         }
         canvas.save()
         canvas.translate(mark.x * side, mark.y * side)
