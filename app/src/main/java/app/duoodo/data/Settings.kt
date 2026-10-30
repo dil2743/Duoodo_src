@@ -27,9 +27,26 @@ class Settings(context: Context) {
         })
         set(value) = prefs.edit().putFloat(WIDGET_OPACITY, value.coerceIn(0f, 1f)).apply()
 
-    private companion object {
-        const val INSTANT = "instant_delivery"
-        const val WIDGET_STYLE = "widget_style"
-        const val WIDGET_OPACITY = "widget_opacity"
+    /** Background color for the widget when frosted or solid. */
+    var widgetColor: Int
+        get() = prefs.getInt(WIDGET_COLOR, 0xFFFFFFFF.toInt())
+        set(value) = prefs.edit().putInt(WIDGET_COLOR, value).apply()
+
+    companion object {
+        private const val INSTANT = "instant_delivery"
+        private const val WIDGET_STYLE = "widget_style"
+        private const val WIDGET_OPACITY = "widget_opacity"
+        private const val WIDGET_COLOR = "widget_color"
+
+        val FROSTED_PALETTE = listOf(
+            0xFFFFFFFF.toInt(), // Pure White
+            0xFF1B1B23.toInt(), // Midnight Black
+            0xFFFFE0B2.toInt(), // Warm Peach
+            0xFFE1BEE7.toInt(), // Soft Lavender
+            0xFFB3E5FC.toInt(), // Sky Blue
+            0xFFC8E6C9.toInt(), // Mint Green
+            0xFFFFF9C4.toInt(), // Lemon Cream
+            0xFFFFCDD2.toInt(), // Rose Pink
+        )
     }
 }

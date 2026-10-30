@@ -205,6 +205,14 @@ class SimulatedEndToEndTest {
         assertTrue(receiverClasses.contains(DuoodoWidgetReceiver2x3::class.java))
         assertTrue(receiverClasses.contains(DuoodoWidgetReceiver1x4::class.java))
 
+        // Verify Frosted Palette has rich color choices
+        val palette = app.duoodo.data.Settings.FROSTED_PALETTE
+        assertEquals(8, palette.size)
+        assertTrue(palette.contains(0xFFFFFFFF.toInt())) // Pure white
+        assertTrue(palette.contains(0xFF1B1B23.toInt())) // Midnight black
+        assertTrue(palette.contains(0xFFB3E5FC.toInt())) // Sky blue
+        assertTrue(palette.contains(0xFFE1BEE7.toInt())) // Lavender
+
         println("SIMULATION PASSED: All 4 phases completed successfully!")
     }
 }

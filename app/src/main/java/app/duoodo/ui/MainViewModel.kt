@@ -78,6 +78,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var widgetOpacity by mutableStateOf(Settings(app).widgetOpacity)
         private set
+    var widgetColor by mutableStateOf(Settings(app).widgetColor)
+        private set
 
     fun changeWidgetStyle(style: Settings.WidgetStyle) {
         val settings = Settings(getApplication())
@@ -105,6 +107,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         settings.widgetStyle = newStyle
         widgetStyle = newStyle
+        viewModelScope.launch { DuoodoWidget.refreshAll(getApplication()) }
+    }
+
+    fun changeWidgetColor(color: Int) {
+        val settings = Settings(getApplication())
+        settings.widgetColor = color
+        widgetColor = color
         viewModelScope.launch { DuoodoWidget.refreshAll(getApplication()) }
     }
 

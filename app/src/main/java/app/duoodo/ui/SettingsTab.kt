@@ -5,8 +5,11 @@ import android.content.Intent
 import android.net.Uri
 import android.os.PowerManager
 import android.provider.Settings
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -16,7 +19,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.BatteryChargingFull
@@ -177,6 +182,33 @@ fun SettingsTab(vm: MainViewModel) {
                     valueRange = 0f..1f,
                     modifier = Modifier.fillMaxWidth(),
                 )
+                if (vm.widgetOpacity > 0.01f) {
+                    Spacer(Modifier.size(14.dp))
+                    Text("Background tint", style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.size(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        AppSettings.FROSTED_PALETTE.forEach { colorInt ->
+                            val selected = vm.widgetColor == colorInt
+                            val color = Color(colorInt)
+                            Box(
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .border(
+                                        width = if (selected) 2.5.dp else 1.dp,
+                                        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                                        shape = CircleShape,
+                                    )
+                                    .padding(if (selected) 3.dp else 1.dp)
+                                    .clip(CircleShape)
+                                    .background(color)
+                                    .clickable { vm.changeWidgetColor(colorInt) }
+                            )
+                        }
+                    }
+                }
             }
         }
 

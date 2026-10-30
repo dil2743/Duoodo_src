@@ -64,16 +64,18 @@ class DuoodoWidget : GlanceAppWidget() {
             val version = currentState(VERSION) ?: 0L
             val settings = remember(version) { Settings(context) }
             val opacity = settings.widgetOpacity
+            val baseColor = Color(settings.widgetColor)
             val doodle = remember(version) { store.read()?.takeIf { !it.isEmpty } }
             val size = LocalSize.current
 
-            val inset = if (opacity > 0.01f && opacity < 0.99f) 10.dp else 0.dp
+            // Very thin boundary: 2.dp inset maximizes drawing area while preserving a clean widget edge
+            val inset = 2.dp
             val availW = (size.width - inset * 2).coerceAtLeast(32.dp)
             val availH = (size.height - inset * 2).coerceAtLeast(32.dp)
             val widthPx = ((availW.value * density).toInt()).coerceIn(64, 1200)
             val heightPx = ((availH.value * density).toInt()).coerceIn(64, 1200)
 
-            val bitmap = remember(version, widthPx, heightPx, opacity) {
+            val bitmap = remember(version, widthPx, heightPx, opacity, settings.widgetColor) {
                 doodle?.let {
                     if (opacity < 0.65f) DoodleRenderer.toTransparentBitmap(it, widthPx, heightPx)
                     else DoodleRenderer.toBitmap(it, widthPx, heightPx, android.graphics.Color.TRANSPARENT)
@@ -82,10 +84,10 @@ class DuoodoWidget : GlanceAppWidget() {
 
             val card = when {
                 opacity <= 0.01f -> ColorProvider(day = Color.Transparent, night = Color.Transparent)
-                opacity >= 0.99f -> ColorProvider(day = Color.White, night = Color.White)
+                opacity >= 0.99f -> ColorProvider(day = baseColor, night = baseColor)
                 else -> ColorProvider(
-                    day = Color.White.copy(alpha = opacity),
-                    night = Color(0xFF1B1B23).copy(alpha = opacity),
+                    day = baseColor.copy(alpha = opacity),
+                    night = baseColor.copy(alpha = opacity),
                 )
             }
 
@@ -93,14 +95,17 @@ class DuoodoWidget : GlanceAppWidget() {
                 GlanceModifier
                     .fillMaxSize()
                     .background(card)
-                    .cornerRadius(24.dp)
+                    .cornerRadius(16.dp)
                     .padding(inset)
                     .clickable(actionStartActivity<MainActivity>()),
                 contentAlignment = Alignment.Center,
             ) {
                 if (bitmap == null) {
+                    val lum = 0.299f * baseColor.red + 0.587f * baseColor.green + 0.114f * baseColor.blue
+                    val isDarkBackground = lum < 0.5f && opacity > 0.3f
                     val textColor = when {
-                        opacity >= 0.9f -> ColorProvider(day = Color(0xFF5E5D6E), night = Color(0xFF5E5D6E))
+                        isDarkBackground -> ColorProvider(day = Color(0xFFE5E3EE), night = Color(0xFFE5E3EE))
+                        opacity >= 0.8f -> ColorProvider(day = Color(0xFF5E5D6E), night = Color(0xFF5E5D6E))
                         else -> ColorProvider(day = Color(0xFF1B1B23), night = Color(0xFFE5E3EE))
                     }
                     if (size.height < 90.dp) {
@@ -133,7 +138,7 @@ class DuoodoWidget : GlanceAppWidget() {
                     Image(
                         provider = ImageProvider(bitmap),
                         contentDescription = "Latest doodle from your partner",
-                        modifier = if (inset > 0.dp) GlanceModifier.cornerRadius(16.dp) else GlanceModifier,
+                        modifier = GlanceModifier.cornerRadius(14.dp),
                     )
                 }
             }

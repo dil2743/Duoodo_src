@@ -1,0 +1,2 @@
+- Ultra-thin widget boundary: reduced inner padding from 10dp to 2dp, maximizing canvas drawing space
+- Customizable frosted background color: choose from a palette of 8 tints (Pure White, Midnight Black, Peach, Lavender, Sky Blue, Mint, Lemon, Rose)
