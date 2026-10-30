@@ -24,27 +24,44 @@ object DoodleRenderer {
     /** Text wraps once a line would exceed this fraction of the canvas width. */
     private const val MAX_TEXT_WIDTH = 0.9f
 
-    fun toBitmap(doodle: Doodle, sizePx: Int, background: Int = Color.WHITE): Bitmap {
-        val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+    fun toBitmap(doodle: Doodle, widthPx: Int, heightPx: Int, background: Int = Color.WHITE): Bitmap {
+        val bitmap = Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        canvas.drawColor(background)
-        drawMarks(canvas, doodle.marks, sizePx.toFloat())
+        if (background != Color.TRANSPARENT) canvas.drawColor(background)
+        val side = min(widthPx, heightPx).toFloat()
+        val offsetX = (widthPx - side) / 2f
+        val offsetY = (heightPx - side) / 2f
+        canvas.save()
+        canvas.translate(offsetX, offsetY)
+        drawMarks(canvas, doodle.marks, side)
+        canvas.restore()
         return bitmap
     }
+
+    fun toBitmap(doodle: Doodle, sizePx: Int, background: Int = Color.WHITE): Bitmap =
+        toBitmap(doodle, sizePx, sizePx, background)
 
     /**
      * Renders the doodle on a transparent background for drawing straight onto the wallpaper.
      * Each mark gets a soft dark halo so it reads on light and dark wallpapers alike, and
      * white "eraser" strokes are dropped since there's no paper to rub out.
      */
-    fun toTransparentBitmap(doodle: Doodle, sizePx: Int): Bitmap {
-        val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+    fun toTransparentBitmap(doodle: Doodle, widthPx: Int, heightPx: Int): Bitmap {
+        val bitmap = Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         val marks = doodle.marks.filterNot { it is Stroke && it.color == Color.WHITE }
-        val side = sizePx.toFloat()
+        val side = min(widthPx, heightPx).toFloat()
+        val offsetX = (widthPx - side) / 2f
+        val offsetY = (heightPx - side) / 2f
+
         // Halo pass: the same marks, blurred and darkened, underneath.
-        val halo = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
-        drawMarks(Canvas(halo), marks, side)
+        val halo = Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888)
+        val haloCanvas = Canvas(halo)
+        haloCanvas.save()
+        haloCanvas.translate(offsetX, offsetY)
+        drawMarks(haloCanvas, marks, side)
+        haloCanvas.restore()
+
         val alpha = halo.extractAlpha()
         val shadow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = 0x59000000
@@ -53,9 +70,16 @@ object DoodleRenderer {
         canvas.drawBitmap(alpha, 0f, side * 0.003f, shadow)
         alpha.recycle()
         halo.recycle()
+
+        canvas.save()
+        canvas.translate(offsetX, offsetY)
         drawMarks(canvas, marks, side)
+        canvas.restore()
         return bitmap
     }
+
+    fun toTransparentBitmap(doodle: Doodle, sizePx: Int): Bitmap =
+        toTransparentBitmap(doodle, sizePx, sizePx)
 
     /** Draws [marks] in order onto a square region of side [side] at the canvas origin. */
     fun drawMarks(canvas: Canvas, marks: List<Mark>, side: Float) {

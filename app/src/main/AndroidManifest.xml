@@ -51,13 +51,50 @@
 
         <receiver
             android:name=".widget.DuoodoWidgetReceiver"
+            android:label="@string/widget_name_2x2"
             android:exported="true">
             <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.APPWIDGET_UPDATE" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/duoodo_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.DuoodoWidgetReceiver2x4"
+            android:label="@string/widget_name_2x4"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/duoodo_widget_info_2x4" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.DuoodoWidgetReceiver2x3"
+            android:label="@string/widget_name_2x3"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/duoodo_widget_info_2x3" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.DuoodoWidgetReceiver1x4"
+            android:label="@string/widget_name_1x4"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/duoodo_widget_info_1x4" />
         </receiver>
 
         <service

@@ -1,4 +1,11 @@
 <resources>
     <string name="app_name">Duoodo</string>
     <string name="widget_description">Latest doodle from your partner</string>
+    <string name="widget_name_2x2">Duoodo (2×2 Square)</string>
+    <string name="widget_name_2x4">Duoodo (2×4 Wide)</string>
+    <string name="widget_name_2x3">Duoodo (2×3 Medium)</string>
+    <string name="widget_name_1x4">Duoodo (1×4 Banner)</string>
+    <string name="widget_description_2x4">Large wide doodle from your partner</string>
+    <string name="widget_description_2x3">Medium doodle from your partner</string>
+    <string name="widget_description_1x4">Compact banner doodle from your partner</string>
 </resources>

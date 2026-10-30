@@ -8,6 +8,7 @@ import android.provider.Settings
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,9 +25,11 @@ import androidx.compose.material.icons.rounded.LinkOff
 import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -44,11 +47,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import app.duoodo.ui.components.Footer
 import app.duoodo.ui.components.SectionCard
 import app.duoodo.widget.DuoodoWidget
+import kotlin.math.roundToInt
 
 @Composable
 fun SettingsTab(vm: MainViewModel) {
@@ -97,14 +102,37 @@ fun SettingsTab(vm: MainViewModel) {
         SectionCard("Home screen") {
             SettingRow(
                 icon = Icons.Rounded.Widgets,
-                title = if (widgetPlaced) "Widget added" else "Add widget",
+                title = if (widgetPlaced) "Widget on home screen" else "Add widget",
                 subtitle = if (widgetPlaced) "Your partner's latest doodle is on your home screen"
                 else "See their latest doodle without opening the app",
-                trailing = { if (!widgetPlaced && DuoodoWidget.canRequestPin(context)) Chevron() },
-                onClick = if (widgetPlaced || !DuoodoWidget.canRequestPin(context)) null else {
-                    { DuoodoWidget.requestPin(context) }
-                },
             )
+            if (DuoodoWidget.canRequestPin(context)) {
+                Column(Modifier.padding(start = 56.dp, end = 16.dp, bottom = 12.dp)) {
+                    Text(
+                        "Add size to home screen",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Spacer(Modifier.size(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        DuoodoWidget.Size.entries.forEach { size ->
+                            FilledTonalButton(
+                                onClick = { DuoodoWidget.requestPin(context, size) },
+                                modifier = Modifier.weight(1f),
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(size.label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                                    Text(size.subtitle, style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             RowDivider()
             Column(Modifier.padding(start = 56.dp, end = 16.dp, top = 6.dp, bottom = 14.dp)) {
                 Text("Widget look", style = MaterialTheme.typography.bodyLarge)
@@ -124,6 +152,26 @@ fun SettingsTab(vm: MainViewModel) {
                         ) { Text(style.label) }
                     }
                 }
+                Spacer(Modifier.size(14.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Opacity", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "${(vm.widgetOpacity * 100).roundToInt()}%",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+                Slider(
+                    value = vm.widgetOpacity,
+                    onValueChange = vm::changeWidgetOpacity,
+                    valueRange = 0f..1f,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         }
 

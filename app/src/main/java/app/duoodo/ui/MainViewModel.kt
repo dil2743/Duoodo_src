@@ -76,10 +76,35 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     var widgetStyle by mutableStateOf(Settings(app).widgetStyle)
         private set
+    var widgetOpacity by mutableStateOf(Settings(app).widgetOpacity)
+        private set
 
     fun changeWidgetStyle(style: Settings.WidgetStyle) {
-        Settings(getApplication()).widgetStyle = style
+        val settings = Settings(getApplication())
+        settings.widgetStyle = style
         widgetStyle = style
+        val newOpacity = when (style) {
+            Settings.WidgetStyle.CLEAR -> 0f
+            Settings.WidgetStyle.SOLID -> 1f
+            Settings.WidgetStyle.FROSTED -> 0.55f
+        }
+        settings.widgetOpacity = newOpacity
+        widgetOpacity = newOpacity
+        viewModelScope.launch { DuoodoWidget.refreshAll(getApplication()) }
+    }
+
+    fun changeWidgetOpacity(opacity: Float) {
+        val settings = Settings(getApplication())
+        val clamped = opacity.coerceIn(0f, 1f)
+        settings.widgetOpacity = clamped
+        widgetOpacity = clamped
+        val newStyle = when {
+            clamped <= 0.01f -> Settings.WidgetStyle.CLEAR
+            clamped >= 0.99f -> Settings.WidgetStyle.SOLID
+            else -> Settings.WidgetStyle.FROSTED
+        }
+        settings.widgetStyle = newStyle
+        widgetStyle = newStyle
         viewModelScope.launch { DuoodoWidget.refreshAll(getApplication()) }
     }
 
