@@ -40,9 +40,14 @@ class PairingRepository(context: Context) : Handshake.State {
         get() = secrets.get(PARTNER_LEFT)?.firstOrNull() == 1.toByte()
         set(value) = secrets.put(PARTNER_LEFT, if (value) byteArrayOf(1) else null)
 
+    /** Set when user confirms that the 6 safety code emojis match their partner's screen. */
+    var safetyVerified: Boolean
+        get() = secrets.get(SAFETY_VERIFIED)?.firstOrNull() == 1.toByte()
+        set(value) = secrets.put(SAFETY_VERIFIED, if (value) byteArrayOf(1) else null)
+
     /** Forget the partner and everything received from them. */
     fun unpair() {
-        listOf(PAIRING, PENDING, JOINING, JOINING_SINCE, LAST_SENT_DAY, PARTNER_LEFT).forEach { secrets.put(it, null) }
+        listOf(PAIRING, PENDING, JOINING, JOINING_SINCE, LAST_SENT_DAY, PARTNER_LEFT, SAFETY_VERIFIED).forEach { secrets.put(it, null) }
         latest.reset()
     }
 
@@ -53,5 +58,6 @@ class PairingRepository(context: Context) : Handshake.State {
         const val JOINING_SINCE = "joining_since"
         const val LAST_SENT_DAY = "last_sent_day"
         const val PARTNER_LEFT = "partner_left"
+        const val SAFETY_VERIFIED = "safety_verified"
     }
 }

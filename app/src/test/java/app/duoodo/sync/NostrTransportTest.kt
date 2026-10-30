@@ -11,6 +11,7 @@ import app.duoodo.pairing.PairingRelay
 import app.duoodo.pairing.PendingInvite
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
@@ -52,7 +53,8 @@ class NostrTransportTest {
         now += 60_000
         ta.send(doodle(now, color = 2))
         assertEquals(2, tb.fetchLatest()!!.strokes[0].color)
-        assertEquals(1, relays.stored.count { it.kind == NostrEvent.KIND_APP_DATA && it.tag("d") == a.slotTag })
+        val day = now / 1000 / NostrTransport.DAY_SECONDS
+        assertEquals(1, relays.stored.count { it.kind == NostrEvent.KIND_APP_DATA && it.tag("d") == a.slotTag(a.outgoing, day) })
 
         tb.send(doodle(now, color = 3))
         assertEquals(3, ta.fetchLatest()!!.strokes[0].color)
@@ -62,8 +64,9 @@ class NostrTransportTest {
     fun relaySeesOnlyOpaquePaddedData() = runBlocking {
         val (a, _) = pair()
         val small = doodle(now)
+        val day = now / 1000 / NostrTransport.DAY_SECONDS
         NostrTransport(a, relays, MemState(), clock).send(small)
-        val event = relays.stored.last { it.tag("d") == a.slotTag }
+        val event = relays.stored.last { it.tag("d") == a.slotTag(a.outgoing, day) }
         val raw = java.util.Base64.getDecoder().decode(event.content)
         assertTrue("padded well beyond the ${DoodleCodec.encode(small).size}-byte doodle", raw.size > 1000)
         assertTrue(event.tag("expiration")!!.toLong() > now / 1000)
@@ -74,10 +77,19 @@ class NostrTransportTest {
         val (a, b) = pair()
         val state = MemState()
         val ta = NostrTransport(a, relays, state, clock)
+        val day1 = now / 1000 / NostrTransport.DAY_SECONDS
         ta.send(doodle(now, color = 1))
+        val tag1 = a.slotTag(a.outgoing, day1)
+        assertEquals(1, relays.stored.count { it.tag("d") == tag1 })
+
         now += NostrTransport.DAY_SECONDS * 1000
+        val day2 = now / 1000 / NostrTransport.DAY_SECONDS
+        val tag2 = a.slotTag(a.outgoing, day2)
+        assertNotEquals("slot tags must differ across days to prevent linkability", tag1, tag2)
+
         ta.send(doodle(now, color = 2))
-        assertEquals(1, relays.stored.count { it.kind == NostrEvent.KIND_APP_DATA && it.tag("d") == a.slotTag })
+        assertEquals(1, relays.stored.count { it.kind == NostrEvent.KIND_APP_DATA && it.tag("d") == tag2 })
+        assertEquals(0, relays.stored.count { it.kind == NostrEvent.KIND_APP_DATA && it.tag("d") == tag1 })
         assertEquals(2, NostrTransport(b, relays, MemState(), clock).fetchLatest()!!.strokes[0].color)
     }
 
@@ -85,11 +97,13 @@ class NostrTransportTest {
     fun strangerPostingUnderTheSlotTagIsIgnored() = runBlocking {
         val (a, b) = pair()
         val impostor = Pairing(app.duoodo.crypto.Crypto.randomBytes(32), true)
+        val day = now / 1000 / NostrTransport.DAY_SECONDS
+        val tag = a.slotTag(a.outgoing, day)
         // Even knowing the slot tag, an outsider can't sign as A's derived key or encrypt with A's key.
         relays.publish(
             NostrEvent.sign(
-                impostor.nostrPrivateKey(impostor.outgoing, now / 1000 / NostrTransport.DAY_SECONDS),
-                now / 1000, NostrEvent.KIND_APP_DATA, listOf(listOf("d", a.slotTag)), "AAAA",
+                impostor.nostrPrivateKey(impostor.outgoing, day),
+                now / 1000, NostrEvent.KIND_APP_DATA, listOf(listOf("d", tag)), "AAAA",
             )
         )
         assertNull(NostrTransport(b, relays, MemState(), clock).fetchLatest())
@@ -109,21 +123,23 @@ class NostrTransportTest {
         val (a, b) = pair()
         val ta = NostrTransport(a, relays, MemState(), clock)
         val tb = NostrTransport(b, relays, MemState(), clock)
+        val day = now / 1000 / NostrTransport.DAY_SECONDS
         ta.send(doodle(now))
         assertTrue(tb.fetch() is NostrTransport.Incoming.Note)
         now += 1000
         ta.sendGoodbye()
         assertEquals(NostrTransport.Incoming.Unpaired, tb.fetch())
         assertNull("old doodle no longer readable", tb.fetchLatest())
-        assertEquals(1, relays.stored.count { it.tag("d") == a.slotTag })
+        assertEquals(1, relays.stored.count { it.tag("d") == a.slotTag(a.outgoing, day) })
     }
 
     @Test
     fun goodbyeWinsOverAStaleDoodleOnAnotherRelay() = runBlocking {
         val (a, b) = pair()
         val ta = NostrTransport(a, relays, MemState(), clock)
+        val day = now / 1000 / NostrTransport.DAY_SECONDS
         ta.send(doodle(now))
-        val stale = relays.stored.last { it.tag("d") == a.slotTag }
+        val stale = relays.stored.last { it.tag("d") == a.slotTag(a.outgoing, day) }
         now += 1000
         ta.sendGoodbye()
         relays.stored += stale // simulates a relay that still serves the older event

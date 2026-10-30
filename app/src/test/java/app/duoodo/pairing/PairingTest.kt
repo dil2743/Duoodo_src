@@ -25,7 +25,10 @@ class PairingTest {
         assertEquals(initiator.outgoing, responder.pairing.incoming)
         assertEquals(initiator.safetyEmojis, responder.pairing.safetyEmojis)
         assertEquals(6, initiator.safetyEmojis.size)
-        assertEquals(initiator.slotTag, responder.pairing.slotTag)
+        val day = 20000L
+        assertEquals(initiator.slotTag(initiator.outgoing, day), responder.pairing.slotTag(responder.pairing.incoming, day))
+        assertNotEquals(initiator.slotTag(initiator.outgoing, day), initiator.slotTag(initiator.outgoing, day + 1))
+        assertNotEquals(initiator.slotTag(initiator.outgoing, day), initiator.slotTag(initiator.incoming, day))
     }
 
     @Test
@@ -49,6 +52,22 @@ class PairingTest {
     @Test
     fun differentPairingsGetDifferentSafetyCodes() {
         assertNotEquals(Pairing(Crypto.randomBytes(32), true).safetyEmojis, Pairing(Crypto.randomBytes(32), true).safetyEmojis)
+    }
+
+    @Test
+    fun interceptedInviteProducesMismatchedSafetyCodes() {
+        // Alice creates invite, but Eve (interceptor) accepts it instead of Bob
+        val alicePending = PendingInvite.create()
+        val eveResponder = InviteAcceptor.accept(alicePending.invite)
+        val alicePairing = alicePending.complete(eveResponder.sealedReply)
+
+        // Bob accepts a separate invite from Eve
+        val evePending = PendingInvite.create()
+        val bobResponder = InviteAcceptor.accept(evePending.invite)
+        val bobPairing = bobResponder.pairing
+
+        // Alice and Bob have different root secrets; their 6-emoji safety checks will not match
+        assertNotEquals(alicePairing.safetyEmojis, bobPairing.safetyEmojis)
     }
 
     @Test

@@ -31,7 +31,7 @@ object Sync {
     suspend fun check(context: Context) {
         advancePairing(PairingRepository(context))
         val repo = PairingRepository(context)
-        if (repo.partnerLeft) return
+        if (repo.partnerLeft || !repo.safetyVerified) return
         transport(repo)?.fetch()?.let { Inbox.handle(context, it) }
     }
 
@@ -42,6 +42,7 @@ object Sync {
         val repo = PairingRepository(context)
         val transport = transport(repo) ?: throw IllegalStateException("not paired")
         if (repo.partnerLeft) throw PartnerLeftException()
+        if (!repo.safetyVerified) throw IllegalStateException("safety code not verified")
         // Check the partner is still paired while sending, rather than before, so it costs no extra time.
         // If they left, the doodle reached the relays encrypted for a dead pairing that nobody can read.
         coroutineScope {

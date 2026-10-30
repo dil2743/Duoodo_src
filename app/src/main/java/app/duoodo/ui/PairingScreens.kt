@@ -51,6 +51,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import app.duoodo.ui.components.BirdLogo
 import app.duoodo.ui.components.Footer
 import com.google.mlkit.vision.barcode.common.Barcode
@@ -222,6 +223,51 @@ fun JoiningScreen(vm: MainViewModel) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         TextButton(onClick = vm::unpair) { Text("Cancel") }
+    }
+}
+
+@Composable
+fun VerifySafetyScreen(vm: MainViewModel, emojis: List<String>) {
+    PairingColumn {
+        Spacer(Modifier.height(16.dp))
+        BirdLogo(size = 72.dp)
+        Text("Verify safety code", style = MaterialTheme.typography.headlineSmall)
+        Text(
+            "Confirm that both your and your partner's screens display these exact 6 emojis. If an invite was intercepted, they will not match.",
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shape = MaterialTheme.shapes.large,
+            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp, horizontal = 12.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                emojis.forEach { emoji ->
+                    Text(emoji, fontSize = 32.sp)
+                }
+            }
+        }
+
+        Text(
+            "Do these emojis match your partner's screen?",
+            style = MaterialTheme.typography.titleSmall,
+            textAlign = TextAlign.Center,
+        )
+
+        Button(onClick = vm::confirmSafetyCode, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+            Text("They match")
+        }
+
+        FilledTonalButton(onClick = vm::unpair, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+            Text("They don't match (unpair)")
+        }
     }
 }
 

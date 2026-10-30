@@ -80,4 +80,13 @@ class CryptoTest {
         val bad = sig.copyOf().also { it[40] = (it[40].toInt() xor 1).toByte() }
         assertFalse(Schnorr.verify(Schnorr.publicKey(priv), msg, bad))
     }
+
+    @Test
+    fun envelopeRejectsOversizedPayloads() {
+        val key = Crypto.randomBytes(32)
+        val oversize = ByteArray(app.duoodo.sync.Envelope.MAX_SEALED_BYTES + 1)
+        org.junit.Assert.assertThrows(java.io.IOException::class.java) {
+            app.duoodo.sync.Envelope.open(key, oversize, ByteArray(0))
+        }
+    }
 }

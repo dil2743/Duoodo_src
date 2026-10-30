@@ -10,6 +10,7 @@ import java.security.GeneralSecurityException
  * to a fixed bucket size so relays can't infer how detailed a doodle is from its size.
  */
 object Envelope {
+    const val MAX_SEALED_BYTES = 64 * 1024
     private val BUCKETS = intArrayOf(1024, 4096, 16384, 49152)
 
     fun seal(key: ByteArray, payload: ByteArray, aad: ByteArray): ByteArray {
@@ -21,6 +22,7 @@ object Envelope {
 
     /** @throws GeneralSecurityException if tampered with or not for us; IOException if malformed. */
     fun open(key: ByteArray, sealed: ByteArray, aad: ByteArray): ByteArray {
+        if (sealed.size > MAX_SEALED_BYTES) throw IOException("envelope too large")
         val padded = Crypto.open(key, sealed, aad)
         if (padded.size < 4) throw IOException("bad envelope")
         val len = ByteBuffer.wrap(padded).int

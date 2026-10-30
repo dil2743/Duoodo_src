@@ -49,7 +49,7 @@ class LiveService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val repo = PairingRepository(this)
         val pairing = repo.pairing
-        if (pairing == null || repo.partnerLeft || !Settings(this).instantDelivery) {
+        if (pairing == null || repo.partnerLeft || !repo.safetyVerified || !Settings(this).instantDelivery) {
             stopSelf()
             return START_NOT_STICKY
         }

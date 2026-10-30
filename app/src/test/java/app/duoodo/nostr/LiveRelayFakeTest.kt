@@ -100,4 +100,35 @@ class LiveRelayFakeTest {
         assertTrue(reqs.single().contains("\"#d\":[\"x\"]"))
         scope.cancel()
     }
+
+    @Test
+    fun hostileRelayFloodingEventsIsCappedInQuery() = runBlocking {
+        val events = (1..60).map { event("msg$it") }
+        val url = relay(push = events)
+        val pool = RelayPool(listOf(url), client = client)
+        val results = pool.query(RelayPool.filter(listOf(30078), dTags = listOf("x")))
+        assertTrue("query caps results at MAX_QUERY_EVENTS (50)", results.size <= RelayPool.MAX_QUERY_EVENTS)
+        assertEquals(RelayPool.MAX_QUERY_EVENTS, results.size)
+    }
+
+    @Test
+    fun subscriberIgnoresEventsNotMatchingFilterWithoutSigCheck() = runBlocking {
+        // Event has wrong tag "y" (filter expects "x")
+        val otherTagEvent = NostrEvent.sign(key, 1_700_000_000, 30078, listOf(listOf("d", "y")), "wrong_tag")
+        val good = event("right_tag")
+        val url = relay(push = listOf(otherTagEvent, good))
+        val got = Channel<NostrEvent>(Channel.UNLIMITED)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val sub = RelaySubscriber(
+            urls = listOf(url),
+            filter = { RelayPool.filter(listOf(30078), dTags = listOf("x")) },
+            onEvent = { got.send(it) },
+            client = client,
+        )
+        sub.start(scope)
+        val received = withTimeout(5_000) { got.receive() }
+        assertEquals("right_tag", received.content)
+        assertTrue("unsolicited tag event was discarded", got.tryReceive().isFailure)
+        scope.cancel()
+    }
 }

@@ -35,6 +35,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         data object Unpaired : PairState
         data class Inviting(val code: String) : PairState
         data object Joining : PairState
+        data class VerifySafety(val emojis: List<String>) : PairState
         data object Paired : PairState
         data object PartnerLeft : PairState
     }
@@ -93,6 +94,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val pending = repo.pendingInvite
         pairState = when {
             pairing != null && repo.partnerLeft -> PairState.PartnerLeft
+            pairing != null && !repo.safetyVerified -> PairState.VerifySafety(pairing.safetyEmojis)
             pairing != null -> PairState.Paired
             pending != null -> PairState.Inviting(pending.invite.toCode())
             repo.joining != null -> PairState.Joining
@@ -154,6 +156,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Optional check: both phones show the same emojis only if nobody tampered with the invite. */
     val safetyEmojis: List<String>? get() = repo.pairing?.safetyEmojis
 
+    /** Confirm safety code emojis match partner's screen and finalize pairing. */
+    fun confirmSafetyCode() {
+        repo.safetyVerified = true
+        refreshPairState()
+        checkNow()
+    }
+
     /** Also used for cancelling an invite and for leaving a pairing the partner already ended. */
     fun unpair() {
         drawing.clear()
@@ -178,6 +187,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun send() {
+        if (pairState !is PairState.Paired) return
         if (drawing.marks.isEmpty() || busy) return
         val doodle = drawing.snapshot(System.currentTimeMillis())
         viewModelScope.launch {

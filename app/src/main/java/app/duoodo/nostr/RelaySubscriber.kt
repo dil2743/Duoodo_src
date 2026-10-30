@@ -4,6 +4,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -79,7 +80,7 @@ class RelaySubscriber(
 
     /** Runs one connection until the relay or network drops it. */
     private suspend fun connectOnce(url: String) {
-        val incoming = Channel<JsonArray>(Channel.UNLIMITED)
+        val incoming = Channel<JsonArray>(capacity = CHANNEL_CAPACITY, onBufferOverflow = BufferOverflow.DROP_OLDEST)
         val opened = CompletableDeferred<Unit>()
         val ws = client.newWebSocket(Request.Builder().url(url).build(), object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
@@ -87,6 +88,7 @@ class RelaySubscriber(
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
+                if (text.length > MAX_FRAME_CHARS) return
                 runCatching { Json.parseToJsonElement(text).jsonArray }.getOrNull()?.let { incoming.trySend(it) }
             }
 
@@ -114,8 +116,20 @@ class RelaySubscriber(
                 val msg = result.getOrNull() ?: return
                 when ((msg.getOrNull(0) as? JsonPrimitive)?.content) {
                     "EVENT" -> if (msg.getOrNull(1)?.jsonPrimitive?.content == SUB_ID) {
-                        val event = (msg.getOrNull(2) as? JsonObject)?.let(NostrEvent::fromJson)
-                        if (event != null && event.isValid()) onEvent(event)
+                        val obj = msg.getOrNull(2) as? JsonObject
+                        if (obj != null) {
+                            val activeFilter = subscribed ?: filter()
+                            val expectedAuthors = activeFilter?.get("authors")?.jsonArray?.mapNotNull { (it as? JsonPrimitive)?.content }?.toSet()
+                            val expectedDTags = activeFilter?.get("#d")?.jsonArray?.mapNotNull { (it as? JsonPrimitive)?.content }?.toSet()
+                            val pubkey = (obj["pubkey"] as? JsonPrimitive)?.content
+                            val dTag = (obj["tags"] as? JsonArray)?.firstOrNull {
+                                (it as? JsonArray)?.getOrNull(0)?.let { p -> (p as? JsonPrimitive)?.content } == "d"
+                            }?.let { (it as? JsonArray)?.getOrNull(1)?.let { p -> (p as? JsonPrimitive)?.content } }
+                            if ((expectedAuthors == null || pubkey in expectedAuthors) && (expectedDTags == null || dTag in expectedDTags)) {
+                                val event = NostrEvent.fromJson(obj)
+                                if (event != null && event.isValid()) onEvent(event)
+                            }
+                        }
                     }
                     // The relay ended our subscription (e.g. rate limit); reconnect after backoff.
                     "CLOSED" -> if (msg.getOrNull(1)?.jsonPrimitive?.content == SUB_ID) return
@@ -127,6 +141,8 @@ class RelaySubscriber(
     }
 
     companion object {
+        const val MAX_FRAME_CHARS = 128 * 1024
+        const val CHANNEL_CAPACITY = 64
         private const val SUB_ID = "live"
         private const val CONNECT_TIMEOUT_MILLIS = 15_000L
         private const val HEALTHY_MILLIS = 60_000L

@@ -3,6 +3,7 @@ package app.duoodo.nostr
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -12,6 +13,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -64,6 +66,10 @@ class RelayPool(
         val subId = "q" + System.nanoTime().toString(36)
         val req = JsonArray(listOf(JsonPrimitive("REQ"), JsonPrimitive(subId), filter)).toString()
         val close = JsonArray(listOf(JsonPrimitive("CLOSE"), JsonPrimitive(subId))).toString()
+        val expectedAuthors = filter["authors"]?.jsonArray?.mapNotNull { (it as? JsonPrimitive)?.content }?.toSet()
+        val expectedDTags = filter["#d"]?.jsonArray?.mapNotNull { (it as? JsonPrimitive)?.content }?.toSet()
+        val expectedKinds = filter["kinds"]?.jsonArray?.mapNotNull { (it as? JsonPrimitive)?.intOrNull }?.toSet()
+
         val results = fanOut { url ->
             session(url) { send, incoming ->
                 val found = mutableListOf<NostrEvent>()
@@ -71,7 +77,24 @@ class RelayPool(
                 for (msg in incoming) {
                     when (msg.getOrNull(0)?.str()) {
                         "EVENT" -> if (msg.getOrNull(1)?.str() == subId) {
-                            (msg.getOrNull(2) as? JsonObject)?.let(NostrEvent::fromJson)?.let(found::add)
+                            val obj = msg.getOrNull(2) as? JsonObject
+                            if (obj != null) {
+                                val kind = (obj["kind"] as? JsonPrimitive)?.intOrNull
+                                val pubkey = (obj["pubkey"] as? JsonPrimitive)?.content
+                                val dTag = (obj["tags"] as? JsonArray)?.firstOrNull {
+                                    (it as? JsonArray)?.getOrNull(0)?.let { p -> (p as? JsonPrimitive)?.content } == "d"
+                                }?.let { (it as? JsonArray)?.getOrNull(1)?.let { p -> (p as? JsonPrimitive)?.content } }
+
+                                if ((expectedKinds == null || kind in expectedKinds) &&
+                                    (expectedAuthors == null || pubkey in expectedAuthors) &&
+                                    (expectedDTags == null || dTag in expectedDTags)
+                                ) {
+                                    NostrEvent.fromJson(obj)?.let {
+                                        found.add(it)
+                                        if (found.size >= MAX_QUERY_EVENTS) return@session found
+                                    }
+                                }
+                            }
                         }
                         "EOSE", "CLOSED" -> if (msg.getOrNull(1)?.str() == subId) break
                     }
@@ -89,7 +112,7 @@ class RelayPool(
      * in [background] so a publish still reaches them.
      */
     private suspend fun <T> fanOut(op: suspend (String) -> T): List<T> {
-        val done = Channel<T>(Channel.UNLIMITED)
+        val done = Channel<T>(capacity = relays.size)
         relays.forEach { url -> background.launch { done.send(op(url)) } }
         val results = mutableListOf<T>()
         var useful = 0
@@ -109,9 +132,10 @@ class RelayPool(
         url: String,
         block: suspend (send: (String) -> Unit, incoming: Channel<JsonArray>) -> T,
     ): T? {
-        val incoming = Channel<JsonArray>(Channel.UNLIMITED)
+        val incoming = Channel<JsonArray>(capacity = CHANNEL_CAPACITY, onBufferOverflow = BufferOverflow.DROP_OLDEST)
         val ws = client.newWebSocket(Request.Builder().url(url).build(), object : WebSocketListener() {
             override fun onMessage(webSocket: WebSocket, text: String) {
+                if (text.length > MAX_FRAME_CHARS) return
                 val parsed = runCatching { Json.parseToJsonElement(text).jsonArray }.getOrNull() ?: return
                 incoming.trySend(parsed)
             }
@@ -134,6 +158,10 @@ class RelayPool(
     private fun JsonElement.str(): String? = (this as? JsonPrimitive)?.takeIf { it.isString }?.content
 
     companion object {
+        const val MAX_FRAME_CHARS = 128 * 1024
+        const val MAX_QUERY_EVENTS = 50
+        const val CHANNEL_CAPACITY = 64
+
         /**
          * Public relays that accept app-data events and answer in ~3 s (measured 2026-10-29;
          * relay.damus.io rejects these events and relay.nostr.band timed out). Using several means

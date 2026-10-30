@@ -59,7 +59,7 @@ class NostrTransport(
             pairing.nostrPrivateKey(dir, day),
             nowSec,
             NostrEvent.KIND_APP_DATA,
-            listOf(listOf("d", pairing.slotTag), listOf("expiration", (nowSec + EXPIRY_SECONDS).toString())),
+            listOf(listOf("d", pairing.slotTag(dir, day)), listOf("expiration", (nowSec + EXPIRY_SECONDS).toString())),
             sealed.toBase64(),
         )
         if (relays.publish(event) == 0) throw IOException("no relay accepted the doodle")
@@ -85,11 +85,11 @@ class NostrTransport(
 
     /** Relay filter matching the partner's doodle events (also used for live subscriptions). */
     fun incomingFilter(): JsonObject =
-        RelayPool.filter(listOf(NostrEvent.KIND_APP_DATA), authors = incomingAuthors(), dTags = listOf(pairing.slotTag))
+        RelayPool.filter(listOf(NostrEvent.KIND_APP_DATA), authors = incomingAuthors(), dTags = incomingTags())
 
     /** Decrypts an event from the partner's slot; null if it isn't one of theirs. */
     fun read(event: NostrEvent): Incoming? {
-        if (event.kind != NostrEvent.KIND_APP_DATA || event.tag("d") != pairing.slotTag) return null
+        if (event.kind != NostrEvent.KIND_APP_DATA || event.tag("d") !in incomingTags()) return null
         if (event.pubkey !in incomingAuthors()) return null
         val dir = pairing.incoming
         val payload = runCatching { Envelope.open(pairing.messageKey(dir), event.content.fromBase64(), aad(dir)) }.getOrNull()
@@ -100,21 +100,32 @@ class NostrTransport(
 
     @Volatile private var authorsCache: Pair<Long, List<String>>? = null
 
+    private fun incomingDays(): LongRange {
+        val nowDay = clock() / 1000 / DAY_SECONDS
+        return (nowDay - LOOKBACK_DAYS..nowDay + 1)
+    }
+
     /** The partner's signing keys for the past week and tomorrow; slack covers clock skew. */
     private fun incomingAuthors(): List<String> {
         val nowDay = clock() / 1000 / DAY_SECONDS
         authorsCache?.let { (day, authors) -> if (day == nowDay) return authors }
-        val authors = (nowDay - LOOKBACK_DAYS..nowDay + 1).map { pairing.nostrPublicKey(pairing.incoming, it).toHex() }
+        val authors = incomingDays().map { pairing.nostrPublicKey(pairing.incoming, it).toHex() }
         authorsCache = nowDay to authors
         return authors
+    }
+
+    fun incomingTags(): List<String> {
+        val dir = pairing.incoming
+        return incomingDays().map { pairing.slotTag(dir, it) }
     }
 
     private suspend fun deleteSlot(day: Long, nowSec: Long) {
         val key = pairing.nostrPrivateKey(pairing.outgoing, day)
         val pub = pairing.nostrPublicKey(pairing.outgoing, day).toHex()
+        val tag = pairing.slotTag(pairing.outgoing, day)
         val deletion = NostrEvent.sign(
             key, nowSec, NostrEvent.KIND_DELETION,
-            listOf(listOf("a", "${NostrEvent.KIND_APP_DATA}:$pub:${pairing.slotTag}")), "",
+            listOf(listOf("a", "${NostrEvent.KIND_APP_DATA}:$pub:$tag")), "",
         )
         runCatching { relays.publish(deletion) }
     }

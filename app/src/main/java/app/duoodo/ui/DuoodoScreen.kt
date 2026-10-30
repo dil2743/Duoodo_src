@@ -66,6 +66,7 @@ fun DuoodoScreen(vm: MainViewModel) {
             MainViewModel.PairState.Unpaired -> PairingScaffold(snackbar) { UnpairedScreen(vm) }
             is MainViewModel.PairState.Inviting -> PairingScaffold(snackbar) { InvitingScreen(vm, state.code) }
             MainViewModel.PairState.Joining -> PairingScaffold(snackbar) { JoiningScreen(vm) }
+            is MainViewModel.PairState.VerifySafety -> PairingScaffold(snackbar) { VerifySafetyScreen(vm, state.emojis) }
             MainViewModel.PairState.PartnerLeft -> PairingScaffold(snackbar) { PartnerLeftScreen(vm) }
             MainViewModel.PairState.Paired -> PairedApp(vm, snackbar)
         }
