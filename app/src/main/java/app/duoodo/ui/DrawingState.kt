@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import app.duoodo.model.Doodle
 import app.duoodo.model.DoodleCodec
+import app.duoodo.model.ImageMark
 import app.duoodo.model.Mark
 import app.duoodo.model.Stroke
 import app.duoodo.model.TextMark
@@ -25,7 +26,7 @@ class DrawingState {
     /** Ordered by how often they're reached for, so the first screenful holds the essentials. */
     enum class Tool(val label: String) {
         PEN("Pen"), TEXT("Text"), EMOJI("Emoji"), IMAGE("Image"), ARROW("Arrow"), ERASER("Eraser"),
-        MARKER("Marker"), RAINBOW("Rainbow"), LINE("Line"), BOX("Box"), CIRCLE("Circle");
+        MARKER("Marker"), RAINBOW("Rainbow"), LINE("Line"), BOX("Box"), CIRCLE("Circle"), SELECT("Select");
 
         val isFreehand get() = this == PEN || this == MARKER || this == RAINBOW || this == ERASER
         val isShape get() = this == LINE || this == ARROW || this == BOX || this == CIRCLE
@@ -53,9 +54,16 @@ class DrawingState {
     private var placementScale = 1f
     private var placementRotation = 0f
     private var isPlacing = false
+    private var placementPending = true
 
-    private val steps = mutableListOf<Int>()        // number of marks added per undo step
-    private val redoStack = mutableListOf<List<Mark>>()
+    var selectedIndex by mutableStateOf<Int?>(null)
+        private set
+    val selectedMark: Mark? get() = selectedIndex?.let { marks.getOrNull(it) }
+    private var transformOriginal: Mark? = null
+
+    private data class Edit(val index: Int, val before: List<Mark>, val after: List<Mark>)
+    private val steps = mutableListOf<Edit>()
+    private val redoStack = mutableListOf<Edit>()
     var redoCount by mutableStateOf(0)
         private set
 
@@ -76,7 +84,9 @@ class DrawingState {
     // --- Gestures (normalized coordinates) ---
 
     fun startPlacement(x: Float, y: Float) {
-        if (marks.size >= DoodleCodec.MAX_MARKS) return
+        if (!placementPending || marks.size >= DoodleCodec.MAX_MARKS || (tool != Tool.EMOJI && tool != Tool.IMAGE)) return
+        cancel()
+        selectedIndex = null
         isPlacing = true
         placementX = x.clamp()
         placementY = y.clamp()
@@ -102,7 +112,7 @@ class DrawingState {
                     placementX,
                     placementY,
                     0xFF000000.toInt(),
-                    textSize * EMOJI_SCALE * placementScale,
+                    (textSize * EMOJI_SCALE * placementScale).coerceIn(0.02f, 1f),
                     placementRotation
                 )
             )
@@ -112,7 +122,7 @@ class DrawingState {
                         it,
                         placementX,
                         placementY,
-                        0.4f * placementScale,
+                        (0.4f * placementScale).coerceIn(0.04f, 1f),
                         placementRotation
                     )
                 )
@@ -130,6 +140,73 @@ class DrawingState {
         if (tool == Tool.EMOJI && emoji.toByteArray().size > textBudget) return
         if (tool == Tool.IMAGE && (imageBytes?.size ?: 0) > imageBudget) return
         commit(made)
+        placementPending = false
+        tool = Tool.SELECT
+        selectedIndex = marks.lastIndex
+    }
+
+    fun chooseEmoji(value: String) {
+        chooseTool(Tool.EMOJI)
+        emoji = value
+    }
+
+    fun chooseImage(bytes: ByteArray) {
+        chooseTool(Tool.IMAGE)
+        imageBytes = bytes
+    }
+
+    fun chooseTool(value: Tool) {
+        cancel()
+        selectedIndex = null
+        tool = value
+        placementPending = value == Tool.EMOJI || value == Tool.IMAGE
+    }
+
+    fun select(index: Int?) {
+        cancel()
+        selectedIndex = index?.takeIf { marks.getOrNull(it) is TextMark || marks.getOrNull(it) is ImageMark }
+    }
+
+    fun startTransform(index: Int) {
+        select(index)
+        transformOriginal = selectedMark
+    }
+
+    fun updateTransform(dx: Float, dy: Float, zoom: Float, rotation: Float) {
+        if (transformOriginal == null || !dx.isFinite() || !dy.isFinite() || !zoom.isFinite() || zoom <= 0f || !rotation.isFinite()) return
+        val index = selectedIndex ?: return
+        marks[index] = when (val mark = marks[index]) {
+            is TextMark -> mark.copy(
+                x = (mark.x + dx).clamp(), y = (mark.y + dy).clamp(),
+                size = (mark.size * zoom).coerceIn(0.02f, 1f), rotation = (mark.rotation + rotation) % 360f,
+            )
+            is ImageMark -> ImageMark(
+                mark.bytes, (mark.x + dx).clamp(), (mark.y + dy).clamp(),
+                (mark.scale * zoom).coerceIn(0.04f, 1f), (mark.rotation + rotation) % 360f,
+            ).also { it.cachedBitmap = mark.cachedBitmap }
+            else -> return
+        }
+    }
+
+    fun endTransform() {
+        val original = transformOriginal ?: return
+        val index = selectedIndex ?: return
+        transformOriginal = null
+        if (marks[index] == original) return
+        steps += Edit(index, listOf(original), listOf(marks[index]))
+        redoStack.clear()
+        redoCount = 0
+    }
+
+    fun resizeSelection(value: Float) {
+        val index = selectedIndex ?: return
+        val current = when (val mark = selectedMark) {
+            is TextMark -> mark.size
+            is ImageMark -> mark.scale
+            else -> return
+        }
+        if (transformOriginal == null) startTransform(index)
+        updateTransform(0f, 0f, value / current, 0f)
     }
 
     fun start(x: Float, y: Float) {
@@ -163,6 +240,9 @@ class DrawingState {
     }
 
     fun cancel() {
+        transformOriginal?.let { original -> selectedIndex?.let { marks[it] = original } }
+        transformOriginal = null
+        isPlacing = false
         drawing = false
         preview = emptyList()
     }
@@ -177,7 +257,7 @@ class DrawingState {
             Tool.ARROW -> arrow(startX, startY, x.clamp(), y.clamp(), color, width)
             Tool.BOX -> listOf(Stroke(box(startX, startY, x.clamp(), y.clamp()), color, width))
             Tool.CIRCLE -> listOf(Stroke(ellipse(startX, startY, x.clamp(), y.clamp()), color, width))
-            Tool.TEXT, Tool.EMOJI, Tool.IMAGE -> emptyList()
+            Tool.TEXT, Tool.EMOJI, Tool.IMAGE, Tool.SELECT -> emptyList()
         }
     }
 
@@ -219,28 +299,36 @@ class DrawingState {
     private fun commit(newMarks: List<Mark>) {
         val fitting = newMarks.take(DoodleCodec.MAX_MARKS - marks.size)
         if (fitting.isEmpty()) return
+        steps += Edit(marks.size, emptyList(), fitting)
         marks.addAll(fitting)
-        steps += fitting.size
+        selectedIndex = null
         redoStack.clear()
         redoCount = 0
     }
 
     fun undo() {
-        val n = steps.removeLastOrNull() ?: return
-        val removed = marks.subList(marks.size - n, marks.size).toList()
-        repeat(n) { marks.removeAt(marks.lastIndex) }
-        redoStack += removed
+        cancel()
+        selectedIndex = null
+        val edit = steps.removeLastOrNull() ?: return
+        repeat(edit.after.size) { marks.removeAt(edit.index) }
+        marks.addAll(edit.index, edit.before)
+        redoStack += edit
         redoCount = redoStack.size
     }
 
     fun redo() {
-        val again = redoStack.removeLastOrNull() ?: return
-        marks.addAll(again)
-        steps += again.size
+        cancel()
+        selectedIndex = null
+        val edit = redoStack.removeLastOrNull() ?: return
+        repeat(edit.before.size) { marks.removeAt(edit.index) }
+        marks.addAll(edit.index, edit.after)
+        steps += edit
         redoCount = redoStack.size
     }
 
     fun clear() {
+        cancel()
+        selectedIndex = null
         marks.clear()
         steps.clear()
         redoStack.clear()
@@ -312,11 +400,12 @@ class DrawingState {
         val WIDTHS = listOf(0.006f, 0.014f, 0.03f)
         val TEXT_SIZES = listOf(0.045f, 0.07f, 0.11f)
         val EMOJIS = listOf(
-            "😀", "😂", "🥰", "😘", "😎", "🤔", "😴", "😭", "😡", "🤯", "🥳", "😇",
-            "👍", "👏", "🙏", "💪", "👋", "🤞", "✌️", "🫶", "❤️", "💛", "💙", "💔",
-            "⭐", "✨", "🔥", "🌈", "☀️", "🌙", "⚡", "❄️", "🌸", "🌻", "🍀", "🌊",
-            "🎉", "🎁", "🎈", "🎂", "☕", "🍕", "🍔", "🍦", "🐶", "🐱", "🐦", "🦋",
-            "💤", "💯", "✅", "❌", "❓", "❗", "💬", "📍", "🏠", "✈️", "🎵", "📷",
+            "🥰", "😍", "😘", "😊", "😉", "🤗", "🥺", "🥹", "🤭", "😏", "😳", "😌",
+            "❤️", "💕", "💞", "💖", "💘", "❤️‍🔥", "❤️‍🩹", "💔", "🫶", "🫂", "💋", "💌",
+            "💑", "👩‍❤️‍👩", "👨‍❤️‍👨", "💏", "👩‍❤️‍💋‍👩", "👨‍❤️‍💋‍👨", "👩‍❤️‍💋‍👨", "👫", "👭", "👬", "💍", "🌹",
+            "😂", "😅", "😜", "😋", "😇", "🤔", "😔", "😢", "😭", "😤", "😴", "🤒",
+            "☕", "🍫", "🍓", "🍽️", "🥂", "🍷", "🍿", "🎬", "🎶", "💐", "🎁", "🎂",
+            "🕯️", "🛁", "🛋️", "🛏️", "🧸", "🏡", "🌙", "💤", "🤫", "👍", "🙏", "🤞",
         )
 
         /** Minimum distance between recorded freehand points, as a fraction of the canvas side. */

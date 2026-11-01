@@ -35,6 +35,7 @@ import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -181,6 +182,10 @@ fun SettingsContent(
                                 onClick = { onPinWidget(size) },
                                 modifier = Modifier.weight(1f),
                                 shape = MaterialTheme.shapes.small,
+                                colors = ButtonDefaults.filledTonalButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                ),
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                             ) {
                                 Column(Modifier.fillMaxWidth()) {

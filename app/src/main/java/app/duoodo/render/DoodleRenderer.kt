@@ -4,6 +4,8 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Matrix
+import android.graphics.RectF
 import android.graphics.Path
 import android.graphics.Typeface
 import android.text.Layout
@@ -96,13 +98,41 @@ object DoodleRenderer {
         }
     }
 
+    private fun imageBitmap(mark: ImageMark): Bitmap? = mark.cachedBitmap
+        ?: android.graphics.BitmapFactory.decodeByteArray(mark.bytes, 0, mark.bytes.size)?.also { mark.cachedBitmap = it }
+
+    fun markBounds(mark: Mark, side: Float): RectF? {
+        if (side <= 0f) return null
+        return when (mark) {
+            is ImageMark -> {
+                val bitmap = imageBitmap(mark) ?: return null
+                val halfWidth = side * mark.scale / 2f
+                val halfHeight = halfWidth * bitmap.height / bitmap.width
+                RectF(mark.x * side - halfWidth, mark.y * side - halfHeight, mark.x * side + halfWidth, mark.y * side + halfHeight)
+            }
+            is TextMark -> if (mark.text.isEmpty()) null else textBounds(mark, side, textLayout(mark, side))
+            else -> null
+        }
+    }
+
+    fun hitTest(marks: List<Mark>, x: Float, y: Float, side: Float, tolerance: Float = 0f): Int? {
+        return marks.indices.reversed().firstOrNull { index ->
+            val mark = marks[index]
+            val bounds = markBounds(mark, side) ?: return@firstOrNull false
+            val point = floatArrayOf(x, y)
+            when (mark) {
+                is ImageMark -> Matrix().apply { setRotate(-mark.rotation, mark.x * side, mark.y * side) }.mapPoints(point)
+                is TextMark -> Matrix().apply { setRotate(-mark.rotation, mark.x * side, mark.y * side) }.mapPoints(point)
+                else -> return@firstOrNull false
+            }
+            bounds.inset(-tolerance, -tolerance)
+            bounds.contains(point[0], point[1])
+        }
+    }
+
     private fun drawImage(canvas: Canvas, mark: ImageMark, side: Float) {
         if (mark.bytes.isEmpty() || side <= 0f) return
-        var bmp = mark.cachedBitmap
-        if (bmp == null) {
-            bmp = android.graphics.BitmapFactory.decodeByteArray(mark.bytes, 0, mark.bytes.size) ?: return
-            mark.cachedBitmap = bmp
-        }
+        val bmp = imageBitmap(mark) ?: return
         canvas.save()
         canvas.translate(mark.x * side, mark.y * side)
         canvas.rotate(mark.rotation)
@@ -153,8 +183,7 @@ object DoodleRenderer {
     }
 
     /** Centers the text on its anchor, wrapping long lines and nudging the block to stay on the canvas. */
-    private fun drawText(canvas: Canvas, mark: TextMark, side: Float) {
-        if (mark.text.isEmpty() || side <= 0f) return
+    private fun textLayout(mark: TextMark, side: Float): StaticLayout {
         val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = mark.color
             textSize = mark.size * side
@@ -162,14 +191,25 @@ object DoodleRenderer {
         }
         val maxWidth = side * MAX_TEXT_WIDTH
         val width = min(ceil(StaticLayout.getDesiredWidth(mark.text, paint)), maxWidth).toInt().coerceAtLeast(1)
-        val layout = StaticLayout.Builder.obtain(mark.text, 0, mark.text.length, paint, width)
+        return StaticLayout.Builder.obtain(mark.text, 0, mark.text.length, paint, width)
             .setAlignment(Layout.Alignment.ALIGN_CENTER)
             .build()
+    }
+
+    private fun textBounds(mark: TextMark, side: Float, layout: StaticLayout): RectF {
+        val width = layout.width
         val left = (mark.x * side - width / 2f).coerceIn(0f, side - width)
         val top = (mark.y * side - layout.height / 2f).coerceIn(0f, (side - layout.height).coerceAtLeast(0f))
+        return RectF(left, top, left + width, top + layout.height)
+    }
+
+    private fun drawText(canvas: Canvas, mark: TextMark, side: Float) {
+        if (mark.text.isEmpty() || side <= 0f) return
+        val layout = textLayout(mark, side)
+        val bounds = textBounds(mark, side, layout)
         canvas.save()
         canvas.rotate(mark.rotation, mark.x * side, mark.y * side)
-        canvas.translate(left, top)
+        canvas.translate(bounds.left, bounds.top)
         layout.draw(canvas)
         canvas.restore()
     }

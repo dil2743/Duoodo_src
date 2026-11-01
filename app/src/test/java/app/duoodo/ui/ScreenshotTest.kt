@@ -32,11 +32,17 @@ import androidx.compose.ui.Modifier
 import app.cash.paparazzi.DeviceConfig
 import app.cash.paparazzi.Paparazzi
 import app.duoodo.model.Doodle
+import app.duoodo.model.ImageMark
 import app.duoodo.model.Stroke
 import app.duoodo.model.TextMark
 import app.duoodo.ui.theme.DuoodoTheme
+import app.duoodo.render.DoodleRenderer
 import com.android.resources.NightMode
 import org.junit.Rule
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
@@ -119,13 +125,91 @@ class ScreenshotTest(private val night: Boolean) {
         DrawContent(d, busy = false, onSend = {})
     }
 
+    @Test fun drawShapeTool() = shot {
+        val drawing = remember { DrawingState().apply { tool = DrawingState.Tool.BOX } }
+        DrawContent(drawing, busy = false, onSend = {})
+    }
+
+    @Test fun drawTextLarge() {
+        paparazzi.unsafeUpdateConfig(deviceConfig = deviceConfig.copy(screenWidth = 320, screenHeight = 640, density = com.android.resources.Density.MEDIUM, fontScale = 1.5f))
+        shot {
+            val drawing = remember { DrawingState().apply { tool = DrawingState.Tool.TEXT } }
+            DrawContent(drawing, busy = false, onSend = {})
+        }
+    }
+
+    @Test fun drawSending() = shot {
+        val drawing = remember {
+            DrawingState().apply {
+                start(0.25f, 0.5f)
+                move(0.75f, 0.5f)
+                end()
+            }
+        }
+        DrawContent(drawing, busy = true, onSend = {}, status = "Sending your doodle to your partner")
+    }
+
+    @Test fun drawPeekedCompact() {
+        paparazzi.unsafeUpdateConfig(deviceConfig = deviceConfig.copy(screenWidth = 320, screenHeight = 640, density = com.android.resources.Density.MEDIUM))
+        shot { DrawContent(remember { DrawingState() }, busy = false, onSend = {}, partnerPeeked = true) }
+    }
+
+    @Test fun drawPeekedWithStatus() = shot {
+        DrawContent(remember { DrawingState() }, busy = false, onSend = {}, status = "Sent", partnerPeeked = true)
+    }
+
+    @Test fun selectedEmojiCompact() {
+        paparazzi.unsafeUpdateConfig(deviceConfig = deviceConfig.copy(screenWidth = 320, screenHeight = 640, density = com.android.resources.Density.MEDIUM))
+        shot {
+            val drawing = remember {
+                DrawingState().apply {
+                    chooseEmoji("❤️")
+                    startPlacement(0.5f, 0.5f)
+                    endPlacement()
+                    val emoji = marks.single()
+                    val bounds = DoodleRenderer.markBounds(emoji, 280f)!!
+                    assertFalse(isResizeHandleHit(emoji, androidx.compose.ui.geometry.Offset(140f, 140f), 280f, 24f))
+                    assertTrue(isResizeHandleHit(emoji, androidx.compose.ui.geometry.Offset(bounds.right, bounds.bottom), 280f, 24f))
+                    resizeSelection(0.25f)
+                    endTransform()
+                }
+            }
+            DrawContent(drawing, busy = false, onSend = {})
+        }
+    }
+
+    @Test fun selectedImageAndRotatedHitBounds() = shot {
+        val drawing = remember {
+            val bitmap = android.graphics.Bitmap.createBitmap(80, 40, android.graphics.Bitmap.Config.ARGB_8888)
+            bitmap.eraseColor(0xFF83BFA4.toInt())
+            android.graphics.Canvas(bitmap).drawCircle(40f, 20f, 12f, android.graphics.Paint().apply { color = 0xFFFFD7B7.toInt() })
+            val stream = java.io.ByteArrayOutputStream()
+            bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, stream)
+            bitmap.recycle()
+            DrawingState().apply {
+                chooseImage(stream.toByteArray())
+                startPlacement(0.5f, 0.5f)
+                updatePlacement(0f, 0f, 1f, 90f)
+                endPlacement()
+                val image = marks.single() as ImageMark
+                assertEquals(0, DoodleRenderer.hitTest(marks, 500f, 650f, 1000f))
+                assertNull(DoodleRenderer.hitTest(marks, 650f, 500f, 1000f))
+                assertEquals(1, DoodleRenderer.hitTest(listOf(image, image), 500f, 500f, 1000f))
+                val text = TextMark("❤️", 0f, 0f, 0xFF000000.toInt(), 0.15f)
+                val bounds = DoodleRenderer.markBounds(text, 1000f)!!
+                assertEquals(0, DoodleRenderer.hitTest(listOf(text), bounds.centerX(), bounds.centerY(), 1000f))
+            }
+        }
+        DrawContent(drawing, busy = false, onSend = {})
+    }
+
     @Test fun inboxEmpty() = shot { InboxContent(null, false, {}, {}, {}) }
 
     @Test fun inboxWithDoodle() = shot { InboxContent(sample, false, {}, {}, {}) }
 
     @Composable
-    private fun home(panel: HomePanel? = null) {
-        val drawing = remember { DrawingState() }
+    private fun home(panel: HomePanel? = null, drawing: DrawingState? = null, partnerPeeked: Boolean = false) {
+        val drawingState = drawing ?: remember { DrawingState() }
         val settings: @Composable () -> Unit = {
                 SettingsContent(
                     instantDelivery = true,
@@ -161,7 +245,7 @@ class ScreenshotTest(private val night: Boolean) {
                 unseen = true,
                 live = false,
                 snackbar = remember { SnackbarHostState() },
-                draw = { DrawContent(drawing, busy = false, onSend = {}) },
+                draw = { DrawContent(drawingState, busy = false, onSend = {}, partnerPeeked = partnerPeeked) },
                 inbox = { InboxContent(sample, false, {}, {}, {}) },
                 settings = settings,
             )
@@ -169,6 +253,31 @@ class ScreenshotTest(private val night: Boolean) {
     }
 
     @Test fun homeEmpty() = shot { home() }
+
+    private fun sampleNote() = DrawingState().apply {
+        color = 0xFFAD4565.toInt()
+        textSize = 0.065f
+        addText("Thinking of you", 0.5f, 0.25f)
+        chooseEmoji("❤️")
+        startPlacement(0.5f, 0.52f)
+        endPlacement()
+        resizeSelection(0.24f)
+        endTransform()
+    }
+
+    @Test fun homeWithDoodle() = shot {
+        val drawing = remember { sampleNote().apply { chooseTool(DrawingState.Tool.PEN) } }
+        home(drawing = drawing, partnerPeeked = true)
+    }
+
+    @Test fun homeEmojiPicker() = shot {
+        val drawing = remember { sampleNote().apply { chooseTool(DrawingState.Tool.EMOJI) } }
+        home(drawing = drawing)
+    }
+
+    @Test fun homeSelectedEmoji() = shot {
+        home(drawing = remember { sampleNote() })
+    }
 
     @Test fun homeCompact() {
         paparazzi.unsafeUpdateConfig(deviceConfig = deviceConfig.copy(screenWidth = 320, screenHeight = 640, density = com.android.resources.Density.MEDIUM))

@@ -11,12 +11,14 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/drawWithShapes-light.png" width="220" alt="Drawing screen, light theme">
+  <img src="docs/images/drawWithShapes-light.png" width="220" alt="Blush canvas home with inbox and settings icons, drawing tools, and the peeked indicator">
   &nbsp;
-  <img src="docs/images/inboxWithDoodle-dark.png" width="220" alt="Inbox with a received doodle, dark theme">
+  <img src="docs/images/inboxWithDoodle-light.png" width="220" alt="Inbox panel with a received doodle and refresh, save, and clear controls">
   &nbsp;
-  <img src="docs/images/widgetStyles-light.png" width="220" alt="Home-screen widget in Solid, Frosted and Clear styles">
+  <img src="docs/images/settings-light.png" width="220" alt="Settings panel with blush widget-size buttons, widget styles, opacity, and tint controls">
 </p>
+
+Screenshots show the current source build with sample doodles; published releases may look different.
 
 ---
 
@@ -35,11 +37,17 @@ servers that carry the message.
 
 ## Features
 
+**One canvas, everything within reach**
+- The canvas is the home screen. Open **Inbox** or **Settings** from the top-right icons, then close the panel to return to your drawing.
+- Brushes and shapes are grouped in compact menus. The drawing stays in place while you change tools or open a panel.
+
 **Drawing that's actually fun**
 - ✏️ **Pen**, 🖍 **Marker** (soft, see-through highlighter) and 🌈 **Rainbow** (every stroke cycles through colours)
 - ➡️ **Arrows**, **lines**, **boxes** and **circles** for pointing things out
 - 🔤 **Text** in three sizes and any colour, with emoji support
-- 😀 **Emoji stamps**: pick one of 60 and tap to place it
+- 🥰 **72 couple-focused emojis** for affection, everyday reactions, reassurance, dates, and cozy moments together
+- **Emoji stamps and photos**: choose an item and tap to insert it once; the canvas then switches to Select
+- **Move and resize**: in Select mode, tap an existing item and drag to move it. Pinch to resize or rotate, drag its corner handle, or use the size slider. Each edit supports undo / redo. Choose a drawing tool to paint over photos.
 - 🧽 **Eraser**, **undo / redo**, and smooth curves so your lines look hand-drawn, not jagged
 
 **Arrives in seconds, even when the app is closed**
@@ -47,32 +55,44 @@ servers that carry the message.
   widget within a few seconds. It uses a silent notification, as Android requires for anything
   running in the background.
 - Prefer to save battery? Switch it off and Duoodo checks about every 10 minutes instead.
+- With **read receipts** enabled, a **🙈 peeked indicator** beside Send lets you know your partner has seen your doodle.
 
 **A widget that fits your wallpaper**
 - **Solid**: a clean white card.
 - **Frosted**: a translucent card that lets your wallpaper glow through.
 - **Clear**: just the ink, floating on your wallpaper.
+- Choose **2×2, 2×4, 2×3, or 1×4**, then adjust the opacity and background tint in Settings.
 
 **Feels at home on your phone**
-- Light and dark themes that follow your system setting.
+- Soft blush and peach in light mode, muted rose in dark mode, following your system setting. The drawing paper stays white in both.
 - **Save** a doodle you love as a PNG in its own `Pictures/Duoodo` folder, or **Clear** it.
 - Pair by **scanning a QR code** or by **copying a code** over WhatsApp, Signal, or anything else.
 
 <p align="center">
-  <img src="docs/images/drawEmojiTool-light.png" width="200" alt="Emoji stamp picker">
+  <img src="docs/images/drawEmojiTool-light.png" width="200" alt="Canvas home with the curated couple-focused emoji picker">
   &nbsp;
-  <img src="docs/images/drawWithShapes-dark.png" width="200" alt="Drawing with shapes, dark theme">
+  <img src="docs/images/selectedEmoji-light.png" width="200" alt="Selected emoji with an outline, corner resize handle, and size slider">
   &nbsp;
-  <img src="docs/images/inboxEmpty-light.png" width="200" alt="Empty inbox">
+  <img src="docs/images/drawWithShapes-dark.png" width="200" alt="Canvas home in the muted rose dark theme">
   &nbsp;
-  <img src="docs/images/widgetStyles-dark.png" width="200" alt="Widget styles on a dark wallpaper">
+  <img src="docs/images/settings-dark.png" width="200" alt="Settings and widget controls in dark mode">
+</p>
+
+### Widget style previews
+
+These are illustrations made with the app's doodle renderer, not launcher screenshots. Actual widget dimensions and spacing depend on your launcher.
+
+<p align="center">
+  <img src="docs/images/widgetStyles-light.png" width="220" alt="Illustration of Solid, Frosted, and Clear widget styles on a light wallpaper">
+  &nbsp;
+  <img src="docs/images/widgetStyles-dark.png" width="220" alt="Illustration of Solid, Frosted, and Clear widget styles on a dark wallpaper">
 </p>
 
 ## How it works (the short version)
 
 1. **Pair once.** One of you taps **Invite my partner** and shows a QR code (or copies a code).
-   The other scans it or pastes it. A few seconds later you're connected, and you stay connected
-   until one of you taps **Unpair**.
+  The other scans it or pastes it. Compare the **six safety emojis** on both phones and confirm
+  they match before exchanging doodles. You stay connected until one of you taps **Unpair**.
 2. **Draw and send.** Your doodle is encrypted *on your phone* with a key only the two of you have.
 3. **It travels through public relays.** These are volunteer-run servers on the open
    [Nostr](https://nostr.com) network. They pass along a scrambled blob they can't open, and they
@@ -102,7 +122,7 @@ phone through a VPN or Tor.
 
 ## Data & battery
 
-- **Each doodle is about 1–4 KB.** A single WhatsApp photo is roughly a hundred times bigger.
+- **Doodle payloads are padded to 1, 4, 16, or 48 KB.** Simple sketches use smaller buckets; photos and more detailed doodles can use larger ones.
 - **Staying connected costs about 1–2 MB a month**: a tiny "still here?" ping once a minute.
 - **Battery impact is small.** If your phone is aggressive about closing apps (Xiaomi, Samsung,
   Oppo…), tap **Settings → Allow background running** so deliveries aren't paused.

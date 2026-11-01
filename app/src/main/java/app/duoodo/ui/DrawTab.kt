@@ -16,16 +16,17 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -42,26 +43,31 @@ import androidx.compose.material.icons.automirrored.rounded.Undo
 import androidx.compose.material.icons.rounded.ArrowOutward
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CropSquare
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.EmojiEmotions
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Highlight
 import androidx.compose.material.icons.rounded.HorizontalRule
 import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material.icons.rounded.OpenWith
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.TextFields
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -74,9 +80,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -90,10 +98,14 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.io.ByteArrayOutputStream
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -125,8 +137,7 @@ fun DrawContent(
                     compressImage(context, uri, budget)
                 }
                 if (bytes != null) {
-                    d.imageBytes = bytes
-                    d.tool = DrawingState.Tool.IMAGE
+                    d.chooseImage(bytes)
                 } else {
                     android.widget.Toast.makeText(context, "Could not compress image to fit budget", android.widget.Toast.LENGTH_SHORT).show()
                 }
@@ -154,71 +165,71 @@ fun DrawContent(
     }
 
     val pickImage = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
-    Column(Modifier.fillMaxSize()) {
-        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-            val wide = maxWidth >= 600.dp
-            val paperWidth = if (wide) (maxHeight - 32.dp).coerceIn(160.dp, 560.dp)
-            else minOf(480.dp, (maxHeight - 288.dp).coerceAtLeast(160.dp))
-            val paper: @Composable () -> Unit = {
-            Box(
-                Modifier
-                    .widthIn(max = paperWidth)
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)),
-            ) {
-                DoodleCanvas(
-                    d,
-                    onTap = { x, y ->
-                        when (d.tool) {
-                            DrawingState.Tool.TEXT -> if (d.textBudget > 0) textAt = x to y
-                            else -> Unit
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val wide = maxWidth >= 600.dp
+        val paper: @Composable () -> Unit = {
+            BoxWithConstraints(Modifier.fillMaxSize().padding(20.dp), contentAlignment = Alignment.Center) {
+                val paperSize = minOf(maxWidth, maxHeight, 560.dp)
+                Box(
+                    Modifier
+                        .size(paperSize)
+                        .shadow(6.dp, RoundedCornerShape(3.dp), ambientColor = Color(0xFF8A7DA8), spotColor = Color(0xFF8A7DA8))
+                        .clip(RoundedCornerShape(3.dp)),
+                ) {
+                    DoodleCanvas(
+                        d,
+                        onTap = { x, y ->
+                            if (d.tool == DrawingState.Tool.TEXT && d.textBudget > 0) textAt = x to y
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    if (d.isEmpty && d.preview.isEmpty()) {
+                        Column(
+                            Modifier.align(Alignment.Center).padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Icon(Icons.Rounded.FavoriteBorder, null, tint = Color(0xFFC0A4B8), modifier = Modifier.size(28.dp))
+                            Text(
+                                "Just for you",
+                                fontFamily = FontFamily.Serif,
+                                fontStyle = FontStyle.Italic,
+                                fontSize = 22.sp,
+                                color = Color(0xFF918398),
+                                textAlign = TextAlign.Center,
+                            )
                         }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                if (d.isEmpty && d.preview.isEmpty()) {
-                    Column(
-                        modifier = Modifier.align(Alignment.Center).padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        Icon(Icons.Rounded.FavoriteBorder, null, tint = Color(0xFFB4ACCA), modifier = Modifier.size(24.dp))
-                        Text(
-                            "For your favourite person",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Color(0xFF81798E),
-                            textAlign = TextAlign.Center,
-                        )
                     }
                 }
             }
-            }
-            val tools: @Composable () -> Unit = {
-                ToolStrip(d, onPickImage = pickImage)
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                ToolOptions(d, onPickImage = pickImage)
-            }
-            if (wide) {
-                Row(Modifier.fillMaxSize().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                    Box(Modifier.weight(1f).align(Alignment.CenterVertically), contentAlignment = Alignment.Center) { paper() }
-                    Column(
-                        Modifier.widthIn(max = 320.dp).weight(1f).verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                    ) { tools() }
-                }
-            } else {
-                Column(
-                    Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    paper()
-                    Column(Modifier.widthIn(max = 480.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) { tools() }
+        }
+        val controls: @Composable () -> Unit = {
+            Surface(color = MaterialTheme.colorScheme.surfaceContainerLowest) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Column(Modifier.widthIn(max = 480.dp).fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+                        ToolStrip(d, onPickImage = pickImage)
+                        Spacer(Modifier.height(8.dp))
+                        ToolOptions(d, onPickImage = pickImage)
+                    }
+                    ActionBar(d, busy, onSend, onClear = { confirmClear = true }, status = status, partnerPeeked = partnerPeeked)
                 }
             }
         }
-        ActionBar(d, busy, onSend, onClear = { confirmClear = true }, status = status, partnerPeeked = partnerPeeked)
+        if (wide) {
+            Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) { paper() }
+                Column(
+                    Modifier.width(320.dp).fillMaxHeight().background(MaterialTheme.colorScheme.surfaceContainerLowest)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.Center,
+                ) { controls() }
+            }
+        } else {
+            Column(Modifier.fillMaxSize()) {
+                Box(Modifier.weight(1f)) { paper() }
+                controls()
+            }
+        }
     }
 }
 
@@ -234,48 +245,75 @@ private fun iconFor(tool: DrawingState.Tool): ImageVector? = when (tool) {
     DrawingState.Tool.TEXT -> Icons.Rounded.TextFields
     DrawingState.Tool.EMOJI -> Icons.Rounded.EmojiEmotions
     DrawingState.Tool.IMAGE -> Icons.Rounded.Image
+    DrawingState.Tool.SELECT -> Icons.Rounded.OpenWith
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ToolStrip(d: DrawingState, onPickImage: () -> Unit) {
-    FlowRow(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-        maxItemsInEachRow = 6,
-    ) {
-        DrawingState.Tool.entries.forEach { tool ->
-            val selected = d.tool == tool
-            val bg by animateColorAsState(
-                if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerLow,
-                label = "toolBg",
-            )
-            val fg = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-            ControlTooltip(tool.label) {
-            Box(
-                Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(bg)
-                    .semantics { contentDescription = tool.label }
-                    .selectable(selected = selected, role = Role.RadioButton, onClick = {
-                        if (tool == DrawingState.Tool.IMAGE) {
-                            onPickImage()
-                        } else {
-                            d.tool = tool
+    val groups = listOf(
+        listOf(DrawingState.Tool.PEN, DrawingState.Tool.MARKER, DrawingState.Tool.RAINBOW, DrawingState.Tool.ERASER),
+        listOf(DrawingState.Tool.SELECT),
+        listOf(DrawingState.Tool.ARROW, DrawingState.Tool.LINE, DrawingState.Tool.BOX, DrawingState.Tool.CIRCLE),
+        listOf(DrawingState.Tool.TEXT),
+        listOf(DrawingState.Tool.EMOJI),
+        listOf(DrawingState.Tool.IMAGE),
+    )
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+        groups.forEach { group ->
+            val selected = d.tool in group
+            val tool = if (selected) d.tool else group.first()
+            var expanded by remember { mutableStateOf(false) }
+            val label = when {
+                group.size == 1 -> tool.label
+                tool.isShape -> "Shapes"
+                else -> "Brushes"
+            }
+            Box {
+                ControlTooltip(label) {
+                    val background by animateColorAsState(
+                        if (selected) MaterialTheme.colorScheme.tertiaryContainer else Color.Transparent,
+                        label = "toolSelection",
+                    )
+                    val foreground = if (selected) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                    Box(
+                        Modifier.size(48.dp).clip(CircleShape).background(background)
+                            .semantics { contentDescription = if (selected) "$label, ${tool.label}" else label }
+                            .selectable(selected, role = Role.RadioButton, onClick = {
+                                when {
+                                    group.size > 1 -> expanded = true
+                                    tool == DrawingState.Tool.IMAGE -> onPickImage()
+                                    else -> d.chooseTool(tool)
+                                }
+                            }),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        ToolGlyph(tool, foreground)
+                        if (group.size > 1) {
+                            Icon(Icons.Rounded.ExpandMore, null, Modifier.align(Alignment.BottomCenter).size(12.dp), tint = foreground)
                         }
-                    }),
-                contentAlignment = Alignment.Center,
-            ) {
-                when {
-                    tool == DrawingState.Tool.RAINBOW -> RainbowGlyph()
-                    tool == DrawingState.Tool.ERASER -> EraserGlyph(fg)
-                    else -> Icon(iconFor(tool)!!, null, tint = fg, modifier = Modifier.size(22.dp))
+                    }
+                }
+                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                    group.forEach { option ->
+                        DropdownMenuItem(
+                            text = { Text(option.label) },
+                            leadingIcon = { ToolGlyph(option, MaterialTheme.colorScheme.onSurface) },
+                            trailingIcon = { if (d.tool == option) Icon(Icons.Rounded.Check, "Selected") },
+                            onClick = { d.chooseTool(option); expanded = false },
+                        )
+                    }
                 }
             }
-            }
         }
+    }
+}
+
+@Composable
+private fun ToolGlyph(tool: DrawingState.Tool, color: Color) {
+    when (tool) {
+        DrawingState.Tool.RAINBOW -> RainbowGlyph()
+        DrawingState.Tool.ERASER -> EraserGlyph(color)
+        else -> Icon(iconFor(tool)!!, null, tint = color, modifier = Modifier.size(22.dp))
     }
 }
 
@@ -311,11 +349,40 @@ private fun EraserGlyph(color: Color) {
 
 @Composable
 private fun ToolOptions(d: DrawingState, onPickImage: () -> Unit) {
-    Column(Modifier.fillMaxWidth()) {
-        Text(d.tool.label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Column(Modifier.fillMaxWidth().height(104.dp)) {
         AnimatedContent(targetState = d.tool, label = "toolOptions") { tool ->
-            Column(Modifier.padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 when {
+                    tool == DrawingState.Tool.SELECT -> {
+                        val selected = d.selectedMark
+                        val selectionSize = when (selected) {
+                            is app.duoodo.model.TextMark -> selected.size
+                            is app.duoodo.model.ImageMark -> selected.scale
+                            else -> null
+                        }
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                when (selected) {
+                                    is app.duoodo.model.ImageMark -> "Image"
+                                    is app.duoodo.model.TextMark -> if (selected.text in DrawingState.EMOJIS) "Emoji" else "Text"
+                                    else -> "Nothing selected"
+                                },
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (selectionSize != null) Text("${(selectionSize * 100).roundToInt()}%", style = MaterialTheme.typography.labelMedium)
+                        }
+                        if (selectionSize != null) {
+                            Slider(
+                                value = selectionSize.coerceIn(0.02f, 1f),
+                                onValueChange = d::resizeSelection,
+                                onValueChangeFinished = d::endTransform,
+                                valueRange = (if (selected is app.duoodo.model.ImageMark) 0.04f else 0.02f)..1f,
+                                modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Selected item size" },
+                            )
+                        }
+                    }
                     tool == DrawingState.Tool.IMAGE -> {
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
@@ -361,13 +428,13 @@ private fun ColorRow(d: DrawingState) {
                     .size(48.dp)
                     .semantics { contentDescription = "Color #${Integer.toHexString(c).takeLast(6)}" }
                     .selectable(selected, role = Role.RadioButton, onClick = { d.color = c })
-                    .padding(6.dp)
+                    .padding(8.dp)
                     .border(
-                        width = if (selected) 3.dp else 1.dp,
+                        width = if (selected) 2.dp else 1.dp,
                         color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
                         shape = CircleShape,
                     )
-                    .padding(if (selected) 5.dp else 2.dp)
+                    .padding(if (selected) 4.dp else 1.dp)
                     .clip(CircleShape)
                     .background(Color(c)),
             )
@@ -384,14 +451,14 @@ private fun WidthRow(d: DrawingState, dot: Color) {
 
 @Composable
 private fun <T> SizeRow(options: List<T>, selected: T, onSelect: (T) -> Unit, glyph: @Composable (Int, T) -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
         options.forEachIndexed { i, option ->
             val isSelected = option == selected
             Box(
                 Modifier
                     .size(48.dp)
                     .clip(CircleShape)
-                    .background(if (isSelected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh)
+                    .background(if (isSelected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
                     .semantics { contentDescription = "Size ${i + 1}" }
                     .selectable(isSelected, role = Role.RadioButton, onClick = { onSelect(option) }),
                 contentAlignment = Alignment.Center,
@@ -404,7 +471,7 @@ private fun <T> SizeRow(options: List<T>, selected: T, onSelect: (T) -> Unit, gl
 private fun EmojiGrid(d: DrawingState) {
     LazyVerticalGrid(
         columns = GridCells.Adaptive(48.dp),
-        modifier = Modifier.fillMaxWidth().heightIn(max = 152.dp),
+        modifier = Modifier.fillMaxWidth().heightIn(max = 104.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
@@ -414,7 +481,7 @@ private fun EmojiGrid(d: DrawingState) {
                     .size(48.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(if (d.emoji == e) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
-                    .selectable(d.emoji == e, role = Role.RadioButton, onClick = { d.emoji = e }),
+                    .selectable(d.emoji == e, role = Role.RadioButton, onClick = { d.chooseEmoji(e) }),
                 contentAlignment = Alignment.Center,
             ) { Text(e, fontSize = 24.sp) }
         }
@@ -430,12 +497,11 @@ private fun ActionBar(
     status: String? = null,
     partnerPeeked: Boolean = false,
 ) {
-    Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxWidth()) {
+    Surface(color = MaterialTheme.colorScheme.surfaceContainerLowest, modifier = Modifier.fillMaxWidth()) {
         Column {
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        if (partnerPeeked || status != null) {
+        if (status != null) {
             Text(
-                if (partnerPeeked) "Your partner took a peek" else status.orEmpty(),
+            status,
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 4.dp),
@@ -465,6 +531,19 @@ private fun ActionBar(
             }
             }
             Spacer(Modifier.weight(1f))
+            Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                if (partnerPeeked) {
+                    ControlTooltip("Your partner took a peek") {
+                        Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                            Text(
+                                "🙈",
+                                fontSize = with(LocalDensity.current) { 28.dp.toSp() },
+                                modifier = Modifier.clearAndSetSemantics { contentDescription = "Your partner took a peek" },
+                            )
+                        }
+                    }
+                }
+            }
             ControlTooltip("Send doodle") {
             FilledIconButton(
                 onClick = onSend,
@@ -480,7 +559,7 @@ private fun ActionBar(
             ) {
                 if (busy) {
                     CircularProgressIndicator(
-                        Modifier.size(20.dp),
+                        Modifier.size(20.dp).semantics { contentDescription = "Sending doodle" },
                         strokeWidth = 2.5.dp,
                         color = MaterialTheme.colorScheme.primary,
                     )

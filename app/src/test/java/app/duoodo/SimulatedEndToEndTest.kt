@@ -103,8 +103,7 @@ class SimulatedEndToEndTest {
         val drawing = DrawingState()
 
         // 2a. Place and resize/rotate an Emoji ("🚀")
-        drawing.tool = DrawingState.Tool.EMOJI
-        drawing.emoji = "🚀"
+        drawing.chooseEmoji("🚀")
 
         // Simulate touch down at (0.3, 0.4)
         drawing.startPlacement(0.3f, 0.4f)
@@ -114,6 +113,9 @@ class SimulatedEndToEndTest {
         drawing.endPlacement()
 
         assertEquals("One mark committed", 1, drawing.marks.size)
+        drawing.startPlacement(0.8f, 0.8f)
+        drawing.endPlacement()
+        assertEquals("Further canvas taps must not stamp duplicates", 1, drawing.marks.size)
         val emojiMark = drawing.marks[0] as TextMark
         assertEquals("🚀", emojiMark.text)
         assertEquals(0.35f, emojiMark.x, 1e-4f)
@@ -122,10 +124,9 @@ class SimulatedEndToEndTest {
         assertTrue("Emoji size is scaled by 2.2x", emojiMark.size > DrawingState.TEXT_SIZES[1] * 2.0f)
 
         // 2b. Add a Photo Sticker ("ImageMark")
-        drawing.tool = DrawingState.Tool.IMAGE
         // Create 2 KB simulated photo bytes
         val testImageBytes = ByteArray(2048) { (it % 256).toByte() }
-        drawing.imageBytes = testImageBytes
+        drawing.chooseImage(testImageBytes)
 
         // Simulate touch down at (0.6, 0.6)
         drawing.startPlacement(0.6f, 0.6f)
@@ -143,7 +144,7 @@ class SimulatedEndToEndTest {
         assertEquals(0.4f * 1.5f, imageMark.scale, 1e-4f)
 
         // 2c. Draw Freehand Strokes OVER the sticker
-        drawing.tool = DrawingState.Tool.PEN
+        drawing.chooseTool(DrawingState.Tool.PEN)
         drawing.color = 0xFF00FF00.toInt()
         drawing.start(0.5f, 0.5f)
         drawing.move(0.55f, 0.55f)
@@ -154,6 +155,17 @@ class SimulatedEndToEndTest {
         assertTrue("First mark is TextMark (Emoji)", drawing.marks[0] is TextMark)
         assertTrue("Second mark is ImageMark (Photo Sticker)", drawing.marks[1] is ImageMark)
         assertTrue("Third mark is Stroke (drawn over sticker)", drawing.marks[2] is Stroke)
+
+        drawing.chooseTool(DrawingState.Tool.SELECT)
+        drawing.startTransform(1)
+        drawing.updateTransform(0.03f, -0.02f, 0.9f, 15f)
+        drawing.endTransform()
+        assertEquals("Editing an item must not duplicate it", 3, drawing.marks.size)
+        assertEquals(0.65f, (drawing.marks[1] as ImageMark).x, 1e-4f)
+        assertTrue(drawing.marks[2] is Stroke)
+        drawing.undo()
+        assertEquals(imageMark, drawing.marks[1])
+        drawing.redo()
 
         // =========================================================================
         // STEP 3: Binary Encoding (v3) & End-to-End Relay Delivery
@@ -183,8 +195,10 @@ class SimulatedEndToEndTest {
 
         val receivedImage = receivedDoodle.marks[1] as ImageMark
         assertArrayEquals(testImageBytes, receivedImage.bytes)
-        assertEquals(330f, ((receivedImage.rotation % 360f) + 360f) % 360f, 0.1f)
-        assertEquals(imageMark.scale, receivedImage.scale, 1e-4f)
+        assertEquals(345f, ((receivedImage.rotation % 360f) + 360f) % 360f, 0.1f)
+        assertEquals(imageMark.scale * 0.9f, receivedImage.scale, 1e-4f)
+        assertEquals(0.65f, receivedImage.x, 1e-4f)
+        assertEquals(0.56f, receivedImage.y, 1e-4f)
 
         val receivedStroke = receivedDoodle.marks[2] as Stroke
         assertEquals(0xFF00FF00.toInt(), receivedStroke.color)
