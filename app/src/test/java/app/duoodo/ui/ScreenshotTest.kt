@@ -1,5 +1,6 @@
 package app.duoodo.ui
 
+import android.content.Intent
 import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.result.ActivityResultRegistry
 import androidx.activity.result.ActivityResultRegistryOwner
@@ -207,6 +208,23 @@ class ScreenshotTest(private val night: Boolean) {
 
     @Test fun inboxWithDoodle() = shot { InboxContent(sample, false, {}, {}, {}) }
 
+    @Suppress("DEPRECATION")
+    @Test fun appReleaseIntents() {
+        val releaseUrl = "https://github.com/dil2743/Duoodo/releases/latest"
+        val update = latestReleaseIntent()
+        assertEquals(Intent.ACTION_VIEW, update.action)
+        assertEquals(releaseUrl, update.data.toString())
+
+        val chooser = shareAppIntent()
+        assertEquals(Intent.ACTION_CHOOSER, chooser.action)
+        val share = chooser.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!!
+        assertEquals(Intent.ACTION_SEND, share.action)
+        assertEquals("text/plain", share.type)
+        assertEquals("Duoodo", share.getStringExtra(Intent.EXTRA_SUBJECT))
+        assertEquals("Doodle together with Duoodo: $releaseUrl", share.getStringExtra(Intent.EXTRA_TEXT))
+        assertFalse(share.hasExtra(Intent.EXTRA_STREAM))
+    }
+
     @Composable
     private fun home(panel: HomePanel? = null, drawing: DrawingState? = null, partnerPeeked: Boolean = false) {
         val drawingState = drawing ?: remember { DrawingState() }
@@ -229,6 +247,8 @@ class ScreenshotTest(private val night: Boolean) {
                     onPinWidget = {},
                     onBatterySettings = {},
                     onUnpair = {},
+                    onShareApp = {},
+                    onCheckForUpdates = {},
                 )
         }
         if (panel != null) {

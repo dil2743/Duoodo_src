@@ -1,10 +1,13 @@
 package app.duoodo.ui
 
 import android.annotation.SuppressLint
+import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.PowerManager
 import android.provider.Settings
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -31,6 +34,8 @@ import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.BatteryChargingFull
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.LinkOff
+import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.Widgets
@@ -69,6 +74,27 @@ import app.duoodo.ui.components.SectionCard
 import app.duoodo.widget.DuoodoWidget
 import kotlin.math.roundToInt
 
+private const val LATEST_RELEASE_URL = "https://github.com/dil2743/Duoodo/releases/latest"
+
+internal fun latestReleaseIntent() = Intent(Intent.ACTION_VIEW, Uri.parse(LATEST_RELEASE_URL))
+
+internal fun shareAppIntent(): Intent = Intent.createChooser(
+    Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_SUBJECT, "Duoodo")
+        putExtra(Intent.EXTRA_TEXT, "Doodle together with Duoodo: $LATEST_RELEASE_URL")
+    },
+    "Share Duoodo",
+)
+
+private fun Context.launchSettingsIntent(intent: Intent) {
+    try {
+        startActivity(intent)
+    } catch (_: ActivityNotFoundException) {
+        Toast.makeText(this, "No app available for this action", Toast.LENGTH_SHORT).show()
+    }
+}
+
 @Composable
 fun SettingsTab(vm: MainViewModel) {
     val context = LocalContext.current
@@ -102,6 +128,8 @@ fun SettingsTab(vm: MainViewModel) {
             runCatching { context.startActivity(intent) }
         },
         onUnpair = vm::unpair,
+        onShareApp = { context.launchSettingsIntent(shareAppIntent()) },
+        onCheckForUpdates = { context.launchSettingsIntent(latestReleaseIntent()) },
     )
 }
 
@@ -124,6 +152,8 @@ fun SettingsContent(
     onPinWidget: (DuoodoWidget.Size) -> Unit,
     onBatterySettings: () -> Unit,
     onUnpair: () -> Unit,
+    onShareApp: () -> Unit,
+    onCheckForUpdates: () -> Unit,
 ) {
     var confirmUnpair by remember { mutableStateOf(false) }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
@@ -131,6 +161,22 @@ fun SettingsContent(
         Modifier.widthIn(max = 600.dp).fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
+        SectionCard("App") {
+            SettingRow(
+                icon = Icons.Rounded.Share,
+                title = "Share Duoodo",
+                trailing = { Chevron() },
+                onClick = onShareApp,
+            )
+            RowDivider()
+            SettingRow(
+                icon = Icons.Rounded.SystemUpdate,
+                title = "Check for updates",
+                trailing = { Chevron() },
+                onClick = onCheckForUpdates,
+            )
+        }
+
         SectionCard("Delivery") {
             SettingRow(
                 icon = Icons.Rounded.Bolt,
