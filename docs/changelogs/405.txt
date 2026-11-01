@@ -1,0 +1,4 @@
+- UI and component refactoring across Draw, Inbox, and Settings tabs for improved aesthetics and maintainability
+- Enhanced tool interaction and visual feedback with ControlTooltip
+- Improved button styles and consistent layouts across pairing and settings screens
+- Updated screenshot test suite and visual theme snapshots
