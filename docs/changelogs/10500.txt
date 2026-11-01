@@ -1,0 +1,4 @@
+- Version 1.5.0 release of Duoodo
+- Refactored SettingsTab layout for improved consistency and accessibility
+- Updated UI theme snapshots and documentation previews
+- Performance and rendering refinements
