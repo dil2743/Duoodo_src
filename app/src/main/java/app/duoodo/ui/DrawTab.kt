@@ -12,16 +12,16 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -41,11 +41,11 @@ import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.automirrored.rounded.Undo
 import androidx.compose.material.icons.rounded.ArrowOutward
 import androidx.compose.material.icons.rounded.AutoAwesome
-import androidx.compose.material.icons.rounded.Brush
 import androidx.compose.material.icons.rounded.CropSquare
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.EmojiEmotions
+import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Highlight
 import androidx.compose.material.icons.rounded.HorizontalRule
 import androidx.compose.material.icons.rounded.Image
@@ -53,11 +53,11 @@ import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.TextFields
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -74,7 +74,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
@@ -83,7 +88,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -93,6 +97,7 @@ import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import app.duoodo.ui.components.ControlTooltip
 
 @Composable
 fun DrawTab(vm: MainViewModel) = DrawContent(vm.drawing, vm.busy, vm::send, vm.status, vm.partnerPeeked)
@@ -148,19 +153,19 @@ fun DrawContent(
         )
     }
 
+    val pickImage = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
     Column(Modifier.fillMaxSize()) {
-        // Scrolls only on short screens; on most phones everything fits.
-        Column(
-            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Spacer(Modifier.height(2.dp))
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+            val wide = maxWidth >= 600.dp
+            val paperWidth = if (wide) (maxHeight - 32.dp).coerceIn(160.dp, 560.dp)
+            else minOf(480.dp, (maxHeight - 288.dp).coerceAtLeast(160.dp))
+            val paper: @Composable () -> Unit = {
             Box(
                 Modifier
+                    .widthIn(max = paperWidth)
                     .fillMaxWidth()
-                    .shadow(4.dp, MaterialTheme.shapes.large, clip = false)
-                    .clip(MaterialTheme.shapes.large)
-                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.large),
+                    .clip(RoundedCornerShape(8.dp))
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)),
             ) {
                 DoodleCanvas(
                     d,
@@ -173,27 +178,48 @@ fun DrawContent(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 if (d.isEmpty && d.preview.isEmpty()) {
-                    Text(
-                        hintFor(d.tool),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color(0xFF9E9EAE),
-                        modifier = Modifier.align(Alignment.Center),
-                    )
+                    Column(
+                        modifier = Modifier.align(Alignment.Center).padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Icon(Icons.Rounded.FavoriteBorder, null, tint = Color(0xFFB4ACCA), modifier = Modifier.size(24.dp))
+                        Text(
+                            "For your favourite person",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color(0xFF81798E),
+                            textAlign = TextAlign.Center,
+                        )
+                    }
                 }
             }
-            ToolStrip(d, onPickImage = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) })
-            ToolOptions(d, onPickImage = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) })
+            }
+            val tools: @Composable () -> Unit = {
+                ToolStrip(d, onPickImage = pickImage)
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                ToolOptions(d, onPickImage = pickImage)
+            }
+            if (wide) {
+                Row(Modifier.fillMaxSize().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                    Box(Modifier.weight(1f).align(Alignment.CenterVertically), contentAlignment = Alignment.Center) { paper() }
+                    Column(
+                        Modifier.widthIn(max = 320.dp).weight(1f).verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) { tools() }
+                }
+            } else {
+                Column(
+                    Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    paper()
+                    Column(Modifier.widthIn(max = 480.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) { tools() }
+                }
+            }
         }
         ActionBar(d, busy, onSend, onClear = { confirmClear = true }, status = status, partnerPeeked = partnerPeeked)
     }
-}
-
-private fun hintFor(tool: DrawingState.Tool) = when (tool) {
-    DrawingState.Tool.TEXT -> "Tap anywhere to write"
-    DrawingState.Tool.EMOJI -> "Touch & drag to place. Pinch to scale & rotate"
-    DrawingState.Tool.IMAGE -> "Touch & drag to place. Pinch to scale & rotate"
-    DrawingState.Tool.LINE, DrawingState.Tool.ARROW, DrawingState.Tool.BOX, DrawingState.Tool.CIRCLE -> "Drag to draw a shape"
-    else -> "Draw something for your partner"
 }
 
 private fun iconFor(tool: DrawingState.Tool): ImageVector? = when (tool) {
@@ -210,38 +236,44 @@ private fun iconFor(tool: DrawingState.Tool): ImageVector? = when (tool) {
     DrawingState.Tool.IMAGE -> Icons.Rounded.Image
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ToolStrip(d: DrawingState, onPickImage: () -> Unit) {
-    LazyRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        contentPadding = PaddingValues(vertical = 2.dp),
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        maxItemsInEachRow = 6,
     ) {
-        items(DrawingState.Tool.entries) { tool ->
+        DrawingState.Tool.entries.forEach { tool ->
             val selected = d.tool == tool
             val bg by animateColorAsState(
-                if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
+                if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerLow,
                 label = "toolBg",
             )
             val fg = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+            ControlTooltip(tool.label) {
             Box(
                 Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(14.dp))
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(8.dp))
                     .background(bg)
-                    .clickable {
+                    .semantics { contentDescription = tool.label }
+                    .selectable(selected = selected, role = Role.RadioButton, onClick = {
                         if (tool == DrawingState.Tool.IMAGE) {
                             onPickImage()
                         } else {
                             d.tool = tool
                         }
-                    },
+                    }),
                 contentAlignment = Alignment.Center,
             ) {
                 when {
                     tool == DrawingState.Tool.RAINBOW -> RainbowGlyph()
                     tool == DrawingState.Tool.ERASER -> EraserGlyph(fg)
-                    else -> Icon(iconFor(tool)!!, tool.label, tint = fg, modifier = Modifier.size(22.dp))
+                    else -> Icon(iconFor(tool)!!, null, tint = fg, modifier = Modifier.size(22.dp))
                 }
+            }
             }
         }
     }
@@ -279,13 +311,10 @@ private fun EraserGlyph(color: Color) {
 
 @Composable
 private fun ToolOptions(d: DrawingState, onPickImage: () -> Unit) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        shape = MaterialTheme.shapes.large,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
+    Column(Modifier.fillMaxWidth()) {
+        Text(d.tool.label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         AnimatedContent(targetState = d.tool, label = "toolOptions") { tool ->
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 when {
                     tool == DrawingState.Tool.IMAGE -> {
                         Row(
@@ -293,24 +322,15 @@ private fun ToolOptions(d: DrawingState, onPickImage: () -> Unit) {
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text(
-                                "Touch & drag to place. Pinch to scale & rotate.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
                             TextButton(onClick = onPickImage) {
-                                Text("Pick new")
+                                Icon(Icons.Rounded.Image, null, Modifier.size(20.dp))
+                                Spacer(Modifier.size(8.dp))
+                                Text("Choose photo")
                             }
                         }
                     }
                     tool == DrawingState.Tool.EMOJI -> {
                         EmojiGrid(d)
-                        Text(
-                            "Touch & drag to place. Pinch to scale & rotate.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 4.dp),
-                        )
                     }
                     tool == DrawingState.Tool.TEXT -> {
                         ColorRow(d)
@@ -319,16 +339,11 @@ private fun ToolOptions(d: DrawingState, onPickImage: () -> Unit) {
                         }
                     }
                     tool == DrawingState.Tool.ERASER || tool == DrawingState.Tool.RAINBOW -> {
-                        Text(
-                            if (tool == DrawingState.Tool.ERASER) "Rub out parts of your drawing" else "Every stroke paints a rainbow",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        WidthRow(d, Color(0xFF9E9EAE))
+                        WidthRow(d, MaterialTheme.colorScheme.onSurface)
                     }
                     else -> {
                         ColorRow(d)
-                        WidthRow(d, Color(d.color).takeIf { it.luminance() < 0.95f } ?: Color(0xFFBDBDBD))
+                        WidthRow(d, MaterialTheme.colorScheme.onSurface)
                     }
                 }
             }
@@ -338,12 +353,15 @@ private fun ToolOptions(d: DrawingState, onPickImage: () -> Unit) {
 
 @Composable
 private fun ColorRow(d: DrawingState) {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
         items(DrawingState.PALETTE) { c ->
             val selected = d.color == c
             Box(
                 Modifier
-                    .size(34.dp)
+                    .size(48.dp)
+                    .semantics { contentDescription = "Color #${Integer.toHexString(c).takeLast(6)}" }
+                    .selectable(selected, role = Role.RadioButton, onClick = { d.color = c })
+                    .padding(6.dp)
                     .border(
                         width = if (selected) 3.dp else 1.dp,
                         color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
@@ -351,8 +369,7 @@ private fun ColorRow(d: DrawingState) {
                     )
                     .padding(if (selected) 5.dp else 2.dp)
                     .clip(CircleShape)
-                    .background(Color(c))
-                    .clickable { d.color = c },
+                    .background(Color(c)),
             )
         }
     }
@@ -372,10 +389,11 @@ private fun <T> SizeRow(options: List<T>, selected: T, onSelect: (T) -> Unit, gl
             val isSelected = option == selected
             Box(
                 Modifier
-                    .size(44.dp)
+                    .size(48.dp)
                     .clip(CircleShape)
                     .background(if (isSelected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh)
-                    .clickable { onSelect(option) },
+                    .semantics { contentDescription = "Size ${i + 1}" }
+                    .selectable(isSelected, role = Role.RadioButton, onClick = { onSelect(option) }),
                 contentAlignment = Alignment.Center,
             ) { glyph(i, option) }
         }
@@ -385,7 +403,7 @@ private fun <T> SizeRow(options: List<T>, selected: T, onSelect: (T) -> Unit, gl
 @Composable
 private fun EmojiGrid(d: DrawingState) {
     LazyVerticalGrid(
-        columns = GridCells.Adaptive(44.dp),
+        columns = GridCells.Adaptive(48.dp),
         modifier = Modifier.fillMaxWidth().heightIn(max = 152.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -393,10 +411,10 @@ private fun EmojiGrid(d: DrawingState) {
         items(DrawingState.EMOJIS) { e ->
             Box(
                 Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(12.dp))
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(8.dp))
                     .background(if (d.emoji == e) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
-                    .clickable { d.emoji = e },
+                    .selectable(d.emoji == e, role = Role.RadioButton, onClick = { d.emoji = e }),
                 contentAlignment = Alignment.Center,
             ) { Text(e, fontSize = 24.sp) }
         }
@@ -412,59 +430,51 @@ private fun ActionBar(
     status: String? = null,
     partnerPeeked: Boolean = false,
 ) {
-    Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp, modifier = Modifier.fillMaxWidth()) {
+    Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxWidth()) {
+        Column {
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        if (partnerPeeked || status != null) {
+            Text(
+                if (partnerPeeked) "Your partner took a peek" else status.orEmpty(),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 4.dp),
+                textAlign = TextAlign.End,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
         Row(
-            Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            val colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
-            FilledTonalIconButton(onClick = d::undo, enabled = d.canUndo, colors = colors, modifier = Modifier.size(42.dp)) {
+            ControlTooltip("Undo") {
+            IconButton(onClick = d::undo, enabled = d.canUndo, modifier = Modifier.size(48.dp)) {
                 Icon(Icons.AutoMirrored.Rounded.Undo, "Undo", Modifier.size(20.dp))
             }
-            FilledTonalIconButton(onClick = d::redo, enabled = d.canRedo, colors = colors, modifier = Modifier.size(42.dp)) {
+            }
+            ControlTooltip("Redo") {
+            IconButton(onClick = d::redo, enabled = d.canRedo, modifier = Modifier.size(48.dp)) {
                 Icon(Icons.AutoMirrored.Rounded.Redo, "Redo", Modifier.size(20.dp))
             }
-            FilledTonalIconButton(onClick = onClear, enabled = d.canUndo, colors = colors, modifier = Modifier.size(42.dp)) {
+            }
+            ControlTooltip("Clear drawing") {
+            IconButton(onClick = onClear, enabled = d.canUndo, modifier = Modifier.size(48.dp)) {
                 Icon(Icons.Rounded.DeleteOutline, "Clear", Modifier.size(20.dp))
             }
-            Spacer(Modifier.weight(1f))
-            if (partnerPeeked) {
-                Surface(
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    shape = MaterialTheme.shapes.small,
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        Text("🙈", fontSize = 14.sp)
-                        Text(
-                            "Peeked!",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        )
-                    }
-                }
-            } else if (status != null) {
-                Text(
-                    status,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(end = 4.dp),
-                )
             }
+            Spacer(Modifier.weight(1f))
+            ControlTooltip("Send doodle") {
             FilledIconButton(
                 onClick = onSend,
                 enabled = d.canUndo && !busy,
-                modifier = Modifier.size(46.dp),
+                modifier = Modifier.size(52.dp),
                 colors = IconButtonDefaults.filledIconButtonColors(
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,
-                    disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
+                    disabledContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                    disabledContentColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.5f),
                 ),
                 shape = CircleShape,
             ) {
@@ -472,12 +482,14 @@ private fun ActionBar(
                     CircularProgressIndicator(
                         Modifier.size(20.dp),
                         strokeWidth = 2.5.dp,
-                        color = MaterialTheme.colorScheme.onPrimary,
+                        color = MaterialTheme.colorScheme.primary,
                     )
                 } else {
                     Icon(Icons.AutoMirrored.Rounded.Send, "Send", Modifier.size(22.dp))
                 }
             }
+            }
+        }
         }
     }
 }

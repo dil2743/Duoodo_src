@@ -9,43 +9,41 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Draw
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Inbox
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
-import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import app.duoodo.ui.components.BirdLogo
 
-private enum class Tab(val label: String) { DRAW("Draw"), INBOX("Inbox"), SETTINGS("Settings") }
+enum class HomePanel(val label: String) { INBOX("Inbox"), SETTINGS("Settings") }
 
 @Composable
 fun DuoodoScreen(vm: MainViewModel) {
@@ -56,7 +54,6 @@ fun DuoodoScreen(vm: MainViewModel) {
             vm.dismissStatus()
         }
     }
-    // Pairing flow screens are full-screen; the tabbed app appears once paired.
     AnimatedContent(
         targetState = vm.pairState,
         contentKey = { it::class },
@@ -81,86 +78,103 @@ private fun PairingScaffold(snackbar: SnackbarHostState, content: @Composable ()
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PairedApp(vm: MainViewModel, snackbar: SnackbarHostState) {
-    var tab by rememberSaveable { mutableIntStateOf(Tab.DRAW.ordinal) }
-    LaunchedEffect(tab) { if (tab == Tab.INBOX.ordinal) vm.markSeen() }
-    // Jump to the inbox the first time the screen sees a brand-new doodle? No: never yank the user
-    // away from a half-finished drawing. The badge tells them instead.
+    var panel by rememberSaveable { mutableStateOf<HomePanel?>(null) }
+    LaunchedEffect(panel) { if (panel == HomePanel.INBOX) vm.markSeen() }
+    HomeContent(
+        panel = panel,
+        onPanelChange = { panel = it },
+        unseen = vm.unseen,
+        live = vm.instantDelivery,
+        snackbar = snackbar,
+        draw = { DrawTab(vm) },
+        inbox = { InboxTab(vm) },
+        settings = { SettingsTab(vm) },
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HomeContent(
+    panel: HomePanel?,
+    onPanelChange: (HomePanel?) -> Unit,
+    unseen: Boolean,
+    live: Boolean,
+    snackbar: SnackbarHostState,
+    draw: @Composable () -> Unit,
+    inbox: @Composable () -> Unit,
+    settings: @Composable () -> Unit,
+) {
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
+            TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        BirdLogo(size = 28.dp)
+                        BirdLogo(size = 32.dp)
                         Spacer(Modifier.width(10.dp))
-                        Text("Duoodo", style = MaterialTheme.typography.titleLarge)
+                        Column {
+                            Text("Duoodo", style = MaterialTheme.typography.titleLarge)
+                            Text(
+                                if (live) "Together, live" else "Just the two of you",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 },
-                actions = { ConnectionDot(vm.instantDelivery) },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+                actions = {
+                    IconButton(onClick = { onPanelChange(HomePanel.INBOX) }) {
+                        BadgedBox(badge = {
+                            if (unseen) Badge(containerColor = MaterialTheme.colorScheme.tertiary)
+                        }) {
+                            Icon(Icons.Rounded.Inbox, if (unseen) "Inbox, new doodle" else "Inbox")
+                        }
+                    }
+                    IconButton(onClick = { onPanelChange(HomePanel.SETTINGS) }) {
+                        Icon(Icons.Rounded.Settings, "Settings")
+                    }
+                    Spacer(Modifier.width(8.dp))
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
             )
         },
-        bottomBar = {
-            NavigationBar(
-                containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                modifier = Modifier.height(58.dp),
-                tonalElevation = 0.dp,
-            ) {
-                Tab.entries.forEach { t ->
-                    NavigationBarItem(
-                        selected = tab == t.ordinal,
-                        onClick = { tab = t.ordinal },
-                        icon = {
-                            val icon = when (t) {
-                                Tab.DRAW -> Icons.Rounded.Draw
-                                Tab.INBOX -> Icons.Rounded.Inbox
-                                Tab.SETTINGS -> Icons.Rounded.Settings
-                            }
-                            if (t == Tab.INBOX && vm.unseen) {
-                                BadgedBox(badge = { Badge(containerColor = MaterialTheme.colorScheme.error) }) {
-                                    Icon(icon, t.label, modifier = Modifier.size(24.dp))
-                                }
-                            } else {
-                                Icon(icon, t.label, modifier = Modifier.size(24.dp))
-                            }
-                        },
-                        alwaysShowLabel = false,
-                    )
-                }
-            }
-        },
-        snackbarHost = { SnackbarHost(snackbar) },
+        snackbarHost = { if (panel == null) SnackbarHost(snackbar) },
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
-            when (Tab.entries[tab]) {
-                Tab.DRAW -> DrawTab(vm)
-                Tab.INBOX -> InboxTab(vm)
-                Tab.SETTINGS -> SettingsTab(vm)
+        Box(Modifier.fillMaxSize().padding(padding)) { draw() }
+    }
+    if (panel != null) {
+        ModalBottomSheet(
+            onDismissRequest = { onPanelChange(null) },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = MaterialTheme.colorScheme.background,
+            dragHandle = null,
+        ) {
+            Box(Modifier.fillMaxWidth().fillMaxHeight(0.94f)) {
+                HomePanelContent(panel, onClose = { onPanelChange(null) }) {
+                    when (panel) {
+                        HomePanel.INBOX -> inbox()
+                        HomePanel.SETTINGS -> settings()
+                    }
+                }
+                SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
             }
         }
     }
 }
 
-/** Small status pill: green when instant delivery keeps us connected. */
 @Composable
-private fun ConnectionDot(live: Boolean) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        shape = CircleShape,
-        modifier = Modifier.padding(end = 12.dp),
-    ) {
-        Row(Modifier.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-            Surface(color = if (live) Color(0xFF34C759) else MaterialTheme.colorScheme.outline, shape = CircleShape) {
-                Spacer(Modifier.size(8.dp))
+internal fun HomePanelContent(panel: HomePanel, onClose: () -> Unit, content: @Composable () -> Unit) {
+    Column(Modifier.fillMaxSize()) {
+        Row(
+            Modifier.fillMaxWidth().padding(start = 24.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(panel.label, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            IconButton(onClick = onClose) {
+                Icon(Icons.Rounded.Close, "Close ${panel.label.lowercase()}")
             }
-            Spacer(Modifier.width(6.dp))
-            Text(
-                if (live) "Live" else "Paired",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
+        Box(Modifier.weight(1f)) { content() }
     }
 }

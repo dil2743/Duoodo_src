@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -20,8 +22,8 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.SaveAlt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -36,7 +38,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -44,6 +45,7 @@ import androidx.compose.ui.unit.sp
 import app.duoodo.data.Exporter
 import app.duoodo.model.Doodle
 import app.duoodo.ui.components.EmptyIllustration
+import app.duoodo.ui.components.ControlTooltip
 
 @Composable
 fun InboxTab(vm: MainViewModel) =
@@ -62,16 +64,16 @@ fun InboxContent(
 ) {
     PullToRefreshBox(isRefreshing = refreshing, onRefresh = onRefresh, modifier = Modifier.fillMaxSize()) {
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             if (doodle == null || doodle.isEmpty) {
-                Spacer(Modifier.height(56.dp))
+                Spacer(Modifier.height(32.dp))
                 EmptyIllustration()
                 Text("No doodle yet", style = MaterialTheme.typography.titleLarge)
                 Text(
-                    "When your partner sends one, it shows up here and on your home-screen widget.",
+                    "A little space for something from them.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
@@ -83,7 +85,7 @@ fun InboxContent(
                     Text("Check now")
                 }
             } else {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.widthIn(max = 480.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("From your partner", style = MaterialTheme.typography.titleMedium)
                         Text(
@@ -114,35 +116,35 @@ fun InboxContent(
                             }
                         }
                     }
+                    ControlTooltip("Check for a new doodle") {
+                        IconButton(onClick = onRefresh, enabled = !refreshing) {
+                            Icon(Icons.Rounded.Refresh, "Check for a new doodle")
+                        }
+                    }
                 }
                 Box(
                     Modifier
+                        .widthIn(max = 480.dp)
                         .fillMaxWidth()
-                        .shadow(6.dp, MaterialTheme.shapes.large, clip = false)
-                        .clip(MaterialTheme.shapes.large)
-                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.large),
+                        .clip(RoundedCornerShape(8.dp))
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)),
                 ) { DoodleView(doodle.marks, Modifier.fillMaxWidth()) }
 
                 var confirmClear by remember { mutableStateOf(false) }
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                Row(horizontalArrangement = Arrangement.End, modifier = Modifier.widthIn(max = 480.dp).fillMaxWidth()) {
                     if (Exporter.isSupported) {
-                        FilledTonalButton(onClick = onSave, modifier = Modifier.weight(1f)) {
-                            Icon(Icons.Rounded.SaveAlt, null, Modifier.size(18.dp))
-                            Spacer(Modifier.size(8.dp))
-                            Text("Save")
+                        ControlTooltip("Save doodle") {
+                            IconButton(onClick = onSave) {
+                                Icon(Icons.Rounded.SaveAlt, "Save doodle")
+                            }
                         }
                     }
-                    OutlinedButton(onClick = { confirmClear = true }, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Rounded.DeleteOutline, null, Modifier.size(18.dp))
-                        Spacer(Modifier.size(8.dp))
-                        Text("Clear")
+                    ControlTooltip("Clear doodle") {
+                        IconButton(onClick = { confirmClear = true }) {
+                            Icon(Icons.Rounded.DeleteOutline, "Clear doodle")
+                        }
                     }
                 }
-                Text(
-                    "Pull down to check for a new one",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                )
                 if (confirmClear) {
                     AlertDialog(
                         onDismissRequest = { confirmClear = false },

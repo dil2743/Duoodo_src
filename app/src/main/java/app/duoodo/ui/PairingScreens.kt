@@ -11,11 +11,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -60,9 +63,9 @@ import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 
 @Composable
 private fun PairingColumn(content: @Composable ColumnScope.() -> Unit) {
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
         Column(
-            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 16.dp),
+            Modifier.weight(1f).widthIn(max = 480.dp).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp),
             content = content,
@@ -87,7 +90,7 @@ fun UnpairedScreen(vm: MainViewModel) {
         )
         Spacer(Modifier.height(8.dp))
 
-        Button(onClick = vm::createInvite, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+        Button(onClick = vm::createInvite, shape = MaterialTheme.shapes.small, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
             Text("Invite my partner")
         }
         FilledTonalButton(
@@ -98,7 +101,8 @@ fun UnpairedScreen(vm: MainViewModel) {
                     .addOnSuccessListener { code -> code.rawValue?.let(vm::acceptInvite) }
             },
             enabled = !vm.busy,
-            modifier = Modifier.fillMaxWidth().height(52.dp),
+            shape = MaterialTheme.shapes.small,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
         ) {
             Icon(Icons.Rounded.QrCodeScanner, null, Modifier.size(20.dp))
             Spacer(Modifier.size(8.dp))
@@ -190,7 +194,7 @@ fun InvitingScreen(vm: MainViewModel, code: String) {
                 }
             }
         }
-        Button(onClick = { copyToClipboard(context, code); copied = true }, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+        Button(onClick = { copyToClipboard(context, code); copied = true }, shape = MaterialTheme.shapes.small, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
             Text(if (copied) "Copied ✓" else "Copy code")
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -227,7 +231,12 @@ fun JoiningScreen(vm: MainViewModel) {
 }
 
 @Composable
-fun VerifySafetyScreen(vm: MainViewModel, emojis: List<String>) {
+fun VerifySafetyScreen(vm: MainViewModel, emojis: List<String>) =
+    VerifySafetyContent(emojis, vm::confirmSafetyCode, vm::unpair)
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun VerifySafetyContent(emojis: List<String>, onConfirm: () -> Unit, onUnpair: () -> Unit) {
     PairingColumn {
         Spacer(Modifier.height(16.dp))
         BirdLogo(size = 72.dp)
@@ -241,13 +250,14 @@ fun VerifySafetyScreen(vm: MainViewModel, emojis: List<String>) {
 
         Surface(
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            shape = MaterialTheme.shapes.large,
+            shape = MaterialTheme.shapes.small,
             modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
         ) {
-            Row(
+            FlowRow(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp, horizontal = 12.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                maxItemsInEachRow = 6,
             ) {
                 emojis.forEach { emoji ->
                     Text(emoji, fontSize = 32.sp)
@@ -261,11 +271,11 @@ fun VerifySafetyScreen(vm: MainViewModel, emojis: List<String>) {
             textAlign = TextAlign.Center,
         )
 
-        Button(onClick = vm::confirmSafetyCode, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+        Button(onClick = onConfirm, shape = MaterialTheme.shapes.small, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
             Text("They match")
         }
 
-        FilledTonalButton(onClick = vm::unpair, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+        FilledTonalButton(onClick = onUnpair, shape = MaterialTheme.shapes.small, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
             Text("They don't match (unpair)")
         }
     }
@@ -288,7 +298,7 @@ fun PartnerLeftScreen(vm: MainViewModel) {
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Button(onClick = vm::unpair, modifier = Modifier.fillMaxWidth().height(52.dp)) { Text("Start over") }
+        Button(onClick = vm::unpair, shape = MaterialTheme.shapes.small, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("Start over") }
     }
 }
 

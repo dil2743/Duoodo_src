@@ -18,7 +18,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.draw.clip
@@ -53,6 +57,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
@@ -72,21 +79,66 @@ fun SettingsTab(vm: MainViewModel) {
         widgetPlaced = DuoodoWidget.isPlaced(context)
         onPauseOrDispose { }
     }
-    var confirmUnpair by remember { mutableStateOf(false) }
+    SettingsContent(
+        instantDelivery = vm.instantDelivery,
+        readReceipts = vm.readReceipts,
+        widgetStyle = vm.widgetStyle,
+        widgetOpacity = vm.widgetOpacity,
+        widgetColor = vm.widgetColor,
+        safetyEmojis = vm.safetyEmojis,
+        exempt = exempt,
+        widgetPlaced = widgetPlaced,
+        canPinWidget = DuoodoWidget.canRequestPin(context),
+        onInstantDelivery = vm::changeInstantDelivery,
+        onReadReceipts = vm::changeReadReceipts,
+        onWidgetStyle = vm::changeWidgetStyle,
+        onWidgetOpacity = vm::changeWidgetOpacity,
+        onWidgetColor = vm::changeWidgetColor,
+        onPinWidget = { DuoodoWidget.requestPin(context, it) },
+        onBatterySettings = {
+            @SuppressLint("BatteryLife")
+            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}"))
+            runCatching { context.startActivity(intent) }
+        },
+        onUnpair = vm::unpair,
+    )
+}
 
+@Composable
+fun SettingsContent(
+    instantDelivery: Boolean,
+    readReceipts: Boolean,
+    widgetStyle: AppSettings.WidgetStyle,
+    widgetOpacity: Float,
+    widgetColor: Int,
+    safetyEmojis: List<String>?,
+    exempt: Boolean,
+    widgetPlaced: Boolean,
+    canPinWidget: Boolean,
+    onInstantDelivery: (Boolean) -> Unit,
+    onReadReceipts: (Boolean) -> Unit,
+    onWidgetStyle: (AppSettings.WidgetStyle) -> Unit,
+    onWidgetOpacity: (Float) -> Unit,
+    onWidgetColor: (Int) -> Unit,
+    onPinWidget: (DuoodoWidget.Size) -> Unit,
+    onBatterySettings: () -> Unit,
+    onUnpair: () -> Unit,
+) {
+    var confirmUnpair by remember { mutableStateOf(false) }
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
+        Modifier.widthIn(max = 600.dp).fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         SectionCard("Delivery") {
             SettingRow(
                 icon = Icons.Rounded.Bolt,
                 title = "Instant delivery",
-                subtitle = if (vm.instantDelivery) "Doodles arrive within seconds" else "Checks about every 10 minutes",
-                trailing = { Switch(checked = vm.instantDelivery, onCheckedChange = vm::changeInstantDelivery) },
-                onClick = { vm.changeInstantDelivery(!vm.instantDelivery) },
+                subtitle = if (instantDelivery) "Doodles arrive within seconds" else "Checks about every 10 minutes",
+                trailing = { Switch(checked = instantDelivery, onCheckedChange = onInstantDelivery, modifier = Modifier.semantics { contentDescription = "Instant delivery" }) },
+                onClick = { onInstantDelivery(!instantDelivery) },
             )
-            if (vm.instantDelivery) {
+            if (instantDelivery) {
                 RowDivider()
                 SettingRow(
                     icon = Icons.Rounded.BatteryChargingFull,
@@ -94,13 +146,7 @@ fun SettingsTab(vm: MainViewModel) {
                     subtitle = if (exempt) "Battery optimization is off for Duoodo"
                     else "Recommended. Stops your phone from pausing delivery",
                     trailing = { if (!exempt) Chevron() },
-                    onClick = if (exempt) null else {
-                        {
-                            @SuppressLint("BatteryLife")
-                            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}"))
-                            runCatching { context.startActivity(intent) }
-                        }
-                    },
+                    onClick = if (exempt) null else onBatterySettings,
                 )
             }
         }
@@ -110,55 +156,53 @@ fun SettingsTab(vm: MainViewModel) {
                 icon = Icons.Rounded.Widgets,
                 title = if (widgetPlaced) "Widget on home screen" else "Add widget",
                 subtitle = if (widgetPlaced) "Your partner's latest doodle is on your home screen"
-                else if (DuoodoWidget.canRequestPin(context)) "See their latest doodle without opening the app"
+                else if (canPinWidget) "See their latest doodle without opening the app"
                 else "Touch & hold home screen → Widgets → Duoodo",
-                trailing = { if (DuoodoWidget.canRequestPin(context)) Chevron() },
-                onClick = if (DuoodoWidget.canRequestPin(context)) {
-                    { DuoodoWidget.requestPin(context, DuoodoWidget.Size.SQUARE_2X2) }
+                trailing = { if (canPinWidget) Chevron() },
+                onClick = if (canPinWidget) {
+                    { onPinWidget(DuoodoWidget.Size.SQUARE_2X2) }
                 } else null,
             )
-            if (DuoodoWidget.canRequestPin(context)) {
-                Column(Modifier.padding(start = 56.dp, end = 16.dp, bottom = 12.dp)) {
+            if (canPinWidget) {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
                         "Add size to home screen",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium,
                     )
                     Spacer(Modifier.size(8.dp))
+                    DuoodoWidget.Size.entries.chunked(2).forEach { sizes ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        DuoodoWidget.Size.entries.forEach { size ->
+                        sizes.forEach { size ->
                             FilledTonalButton(
-                                onClick = { DuoodoWidget.requestPin(context, size) },
+                                onClick = { onPinWidget(size) },
                                 modifier = Modifier.weight(1f),
-                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
+                                shape = MaterialTheme.shapes.small,
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                             ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Column(Modifier.fillMaxWidth()) {
                                     Text(size.label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                                     Text(size.subtitle, style = MaterialTheme.typography.labelSmall)
                                 }
                             }
                         }
                     }
+                    }
                 }
             }
             RowDivider()
-            Column(Modifier.padding(start = 56.dp, end = 16.dp, top = 6.dp, bottom = 14.dp)) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
                 Text("Widget look", style = MaterialTheme.typography.bodyLarge)
-                Text(
-                    "Frosted and Clear let your wallpaper show through",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
                 Spacer(Modifier.size(10.dp))
                 SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                     val styles = AppSettings.WidgetStyle.entries
                     styles.forEachIndexed { i, style ->
                         SegmentedButton(
-                            selected = vm.widgetStyle == style,
-                            onClick = { vm.changeWidgetStyle(style) },
+                            selected = widgetStyle == style,
+                            onClick = { onWidgetStyle(style) },
                             shape = SegmentedButtonDefaults.itemShape(i, styles.size),
                         ) { Text(style.label) }
                     }
@@ -171,32 +215,35 @@ fun SettingsTab(vm: MainViewModel) {
                 ) {
                     Text("Opacity", style = MaterialTheme.typography.bodyMedium)
                     Text(
-                        "${(vm.widgetOpacity * 100).roundToInt()}%",
+                        "${(widgetOpacity * 100).roundToInt()}%",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.SemiBold,
                     )
                 }
                 Slider(
-                    value = vm.widgetOpacity,
-                    onValueChange = vm::changeWidgetOpacity,
+                    value = widgetOpacity,
+                    onValueChange = onWidgetOpacity,
                     valueRange = 0f..1f,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Widget opacity" },
                 )
-                if (vm.widgetOpacity > 0.01f) {
+                if (widgetOpacity > 0.01f) {
                     Spacer(Modifier.size(14.dp))
                     Text("Background tint", style = MaterialTheme.typography.bodyMedium)
                     Spacer(Modifier.size(8.dp))
-                    Row(
+                    LazyRow(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        AppSettings.FROSTED_PALETTE.forEach { colorInt ->
-                            val selected = vm.widgetColor == colorInt
+                        items(AppSettings.FROSTED_PALETTE) { colorInt ->
+                            val selected = widgetColor == colorInt
                             val color = Color(colorInt)
                             Box(
                                 modifier = Modifier
-                                    .size(34.dp)
+                                    .size(48.dp)
+                                    .semantics { contentDescription = "Tint #${Integer.toHexString(colorInt).takeLast(6)}" }
+                                    .selectable(selected, role = Role.RadioButton, onClick = { onWidgetColor(colorInt) })
+                                    .padding(6.dp)
                                     .border(
                                         width = if (selected) 2.5.dp else 1.dp,
                                         color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
@@ -205,7 +252,6 @@ fun SettingsTab(vm: MainViewModel) {
                                     .padding(if (selected) 3.dp else 1.dp)
                                     .clip(CircleShape)
                                     .background(color)
-                                    .clickable { vm.changeWidgetColor(colorInt) }
                             )
                         }
                     }
@@ -219,12 +265,12 @@ fun SettingsTab(vm: MainViewModel) {
                 title = "Read receipts",
                 subtitle = "Let your partner know when you've taken a peek at their doodle",
                 trailing = {
-                    Switch(checked = vm.readReceipts, onCheckedChange = vm::changeReadReceipts)
+                    Switch(checked = readReceipts, onCheckedChange = onReadReceipts, modifier = Modifier.semantics { contentDescription = "Read receipts" })
                 },
             )
         }
 
-        vm.safetyEmojis?.let { emojis ->
+        safetyEmojis?.let { emojis ->
             SectionCard("Security") {
                 SettingRow(
                     icon = Icons.Rounded.VerifiedUser,
@@ -246,6 +292,7 @@ fun SettingsTab(vm: MainViewModel) {
 
         Footer()
     }
+    }
 
     if (confirmUnpair) {
         AlertDialog(
@@ -253,7 +300,7 @@ fun SettingsTab(vm: MainViewModel) {
             title = { Text("Unpair?") },
             text = { Text("Your partner will be told, and you'll both need a new invite to pair again. The received doodle is deleted.") },
             confirmButton = {
-                TextButton(onClick = { confirmUnpair = false; vm.unpair() }) {
+                TextButton(onClick = { confirmUnpair = false; onUnpair() }) {
                     Text("Unpair", color = MaterialTheme.colorScheme.error)
                 }
             },

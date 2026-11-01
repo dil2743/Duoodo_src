@@ -1,7 +1,13 @@
 package app.duoodo.ui
 
+import androidx.activity.compose.LocalActivityResultRegistryOwner
+import androidx.activity.result.ActivityResultRegistry
+import androidx.activity.result.ActivityResultRegistryOwner
+import androidx.activity.result.contract.ActivityResultContract
+import androidx.core.app.ActivityOptionsCompat
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.foundation.background
@@ -20,6 +26,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import app.cash.paparazzi.DeviceConfig
 import app.cash.paparazzi.Paparazzi
@@ -48,17 +56,31 @@ class ScreenshotTest(private val night: Boolean) {
         fun modes() = listOf(false, true)
     }
 
+    private val deviceConfig = DeviceConfig.PIXEL_6.copy(nightMode = if (night) NightMode.NIGHT else NightMode.NOTNIGHT)
+
     @get:Rule
     val paparazzi = Paparazzi(
-        deviceConfig = DeviceConfig.PIXEL_6.copy(nightMode = if (night) NightMode.NIGHT else NightMode.NOTNIGHT),
+        deviceConfig = deviceConfig,
         showSystemUi = false,
         maxPercentDifference = 1.0,
     )
 
+    private val registryOwner = object : ActivityResultRegistryOwner {
+        override val activityResultRegistry = object : ActivityResultRegistry() {
+            override fun <Input, Output> onLaunch(
+                requestCode: Int,
+                contract: ActivityResultContract<Input, Output>,
+                input: Input,
+                options: ActivityOptionsCompat?,
+            ) = error("Activity launches are not supported in screenshots")
+        }
+    }
+
     private fun shot(content: @Composable () -> Unit) = paparazzi.snapshot {
-        DuoodoTheme(dark = night) {
-            // Surface sets content colour like the app's Scaffold does.
-            Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) { content() }
+        CompositionLocalProvider(LocalActivityResultRegistryOwner provides registryOwner) {
+            DuoodoTheme(dark = night) {
+                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) { content() }
+            }
         }
     }
 
@@ -100,6 +122,82 @@ class ScreenshotTest(private val night: Boolean) {
     @Test fun inboxEmpty() = shot { InboxContent(null, false, {}, {}, {}) }
 
     @Test fun inboxWithDoodle() = shot { InboxContent(sample, false, {}, {}, {}) }
+
+    @Composable
+    private fun home(panel: HomePanel? = null) {
+        val drawing = remember { DrawingState() }
+        val settings: @Composable () -> Unit = {
+                SettingsContent(
+                    instantDelivery = true,
+                    readReceipts = true,
+                    widgetStyle = app.duoodo.data.Settings.WidgetStyle.entries.first(),
+                    widgetOpacity = 0.7f,
+                    widgetColor = app.duoodo.data.Settings.FROSTED_PALETTE.first(),
+                    safetyEmojis = listOf("💜", "🌸", "✨", "🌙", "🍓", "💛"),
+                    exempt = false,
+                    widgetPlaced = false,
+                    canPinWidget = true,
+                    onInstantDelivery = {},
+                    onReadReceipts = {},
+                    onWidgetStyle = {},
+                    onWidgetOpacity = {},
+                    onWidgetColor = {},
+                    onPinWidget = {},
+                    onBatterySettings = {},
+                    onUnpair = {},
+                )
+        }
+        if (panel != null) {
+            HomePanelContent(panel, onClose = {}) {
+                when (panel) {
+                    HomePanel.INBOX -> InboxContent(sample, false, {}, {}, {})
+                    HomePanel.SETTINGS -> settings()
+                }
+            }
+        } else {
+            HomeContent(
+                panel = null,
+                onPanelChange = {},
+                unseen = true,
+                live = false,
+                snackbar = remember { SnackbarHostState() },
+                draw = { DrawContent(drawing, busy = false, onSend = {}) },
+                inbox = { InboxContent(sample, false, {}, {}, {}) },
+                settings = settings,
+            )
+        }
+    }
+
+    @Test fun homeEmpty() = shot { home() }
+
+    @Test fun homeCompact() {
+        paparazzi.unsafeUpdateConfig(deviceConfig = deviceConfig.copy(screenWidth = 320, screenHeight = 640, density = com.android.resources.Density.MEDIUM))
+        shot { home() }
+    }
+
+    @Test fun homeLandscape() {
+        paparazzi.unsafeUpdateConfig(deviceConfig = deviceConfig.copy(screenWidth = 360, screenHeight = 800, density = com.android.resources.Density.MEDIUM, orientation = com.android.resources.ScreenOrientation.LANDSCAPE))
+        shot { home() }
+    }
+
+    @Test fun homeInbox() = shot { home(HomePanel.INBOX) }
+
+    @Test fun homeSettings() = shot { home(HomePanel.SETTINGS) }
+
+    @Test fun homeLargeText() {
+        paparazzi.unsafeUpdateConfig(deviceConfig = deviceConfig.copy(screenWidth = 320, screenHeight = 640, density = com.android.resources.Density.MEDIUM, fontScale = 1.5f))
+        shot { home() }
+    }
+
+    @Test fun settingsCompact() {
+        paparazzi.unsafeUpdateConfig(deviceConfig = deviceConfig.copy(screenWidth = 320, screenHeight = 640, density = com.android.resources.Density.MEDIUM, fontScale = 1.5f))
+        shot { home(HomePanel.SETTINGS) }
+    }
+
+    @Test fun safetyCompact() {
+        paparazzi.unsafeUpdateConfig(deviceConfig = deviceConfig.copy(screenWidth = 320, screenHeight = 640, density = com.android.resources.Density.MEDIUM, fontScale = 1.5f))
+        shot { VerifySafetyContent(listOf("💜", "🌸", "✨", "🌙", "🍓", "💛"), {}, {}) }
+    }
 
     /**
      * Mock of the three widget looks on a wallpaper, built from the same renderer the widget uses.
