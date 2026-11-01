@@ -1,0 +1,7 @@
+- Milestone v1.0.1 release of Duoodo
+- Added "Share Duoodo" and "Check for updates" options in Settings
+- Enhanced UI components, ControlTooltip feedback, and refined screen layouts
+- Resizable emojis and photo stickers with layer drawing
+- Multi-size widgets (2x2, 2x4, 2x3, 1x4) with customizable frosted background tints and opacity
+- Read receipts with a privacy toggle in Settings
+- Strict zero-permission privacy and ephemeral encrypted transport
