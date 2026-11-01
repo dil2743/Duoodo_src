@@ -161,22 +161,6 @@ fun SettingsContent(
         Modifier.widthIn(max = 600.dp).fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
-        SectionCard("App") {
-            SettingRow(
-                icon = Icons.Rounded.Share,
-                title = "Share Duoodo",
-                trailing = { Chevron() },
-                onClick = onShareApp,
-            )
-            RowDivider()
-            SettingRow(
-                icon = Icons.Rounded.SystemUpdate,
-                title = "Check for updates",
-                trailing = { Chevron() },
-                onClick = onCheckForUpdates,
-            )
-        }
-
         SectionCard("Delivery") {
             SettingRow(
                 icon = Icons.Rounded.Bolt,
@@ -338,6 +322,22 @@ fun SettingsContent(
                 subtitle = "Disconnect from your partner",
                 tint = MaterialTheme.colorScheme.error,
                 onClick = { confirmUnpair = true },
+            )
+        }
+
+        SectionCard("App") {
+            SettingRow(
+                icon = Icons.Rounded.Share,
+                title = "Share Duoodo",
+                trailing = { Chevron() },
+                onClick = onShareApp,
+            )
+            RowDivider()
+            SettingRow(
+                icon = Icons.Rounded.SystemUpdate,
+                title = "Check for updates",
+                trailing = { Chevron() },
+                onClick = onCheckForUpdates,
             )
         }
 
